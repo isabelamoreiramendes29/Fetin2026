@@ -37,7 +37,7 @@ Desenvolvido como projeto academico para a **FETIN** (Feira de Tecnologia).
 
 1. Clone o repositorio:
 ```bash
-git clone https://github.com/isabelamoreiramendes29/fetin-app.git
+git clone https://github.com/isabelamoreiramendes29/Fetin2026.git
 ```
 
 2. Instale as dependencias:
