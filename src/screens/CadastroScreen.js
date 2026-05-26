@@ -1,5 +1,6 @@
 // Tela de Cadastro — permite que novos usuarios criem uma conta no Cemtinel
 // Acessada pelo botao "CADASTRAR-SE" da tela Welcome
+// Ao finalizar o cadastro, publica os dados no broker MQTT (topico: app/cad)
 
 import React, { useState } from 'react';
 import {
@@ -17,6 +18,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
+import { publicarCadastro } from '../services/mqtt';
 
 const { width } = Dimensions.get('window');
 
@@ -30,28 +32,27 @@ export default function CadastroScreen({ navigation }) {
   // Controla se a senha esta visivel ou oculta
   const [senhaVisivel, setSenhaVisivel] = useState(false);
 
+  // Controla o estado de envio (evita duplo clique)
+  const [enviando, setEnviando] = useState(false);
+
   // ── VALIDACAO DOS CAMPOS ──
   function validarCampos() {
-    // Verifica se todos os campos foram preenchidos
     if (!nome || !email || !telefone || !senha) {
       Alert.alert('Campos obrigatorios', 'Por favor, preencha todos os campos.');
       return false;
     }
 
-    // Valida formato do e-mail com regex
     const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!emailValido) {
       Alert.alert('E-mail invalido', 'Por favor, insira um e-mail valido.');
       return false;
     }
 
-    // Valida tamanho minimo da senha
     if (senha.length < 6) {
       Alert.alert('Senha fraca', 'A senha deve ter no minimo 6 caracteres.');
       return false;
     }
 
-    // Valida tamanho minimo do telefone (10 digitos = DDD + numero)
     const telefoneSemMascara = telefone.replace(/\D/g, '');
     if (telefoneSemMascara.length < 10) {
       Alert.alert('Telefone invalido', 'Por favor, insira um telefone com DDD (minimo 10 digitos).');
@@ -62,26 +63,37 @@ export default function CadastroScreen({ navigation }) {
   }
 
   // ── ACAO DO BOTAO DE CADASTRAR ──
-  function handleCadastro() {
+  // 1. Valida os campos
+  // 2. Publica no MQTT
+  // 3. Navega para Login
+  async function handleCadastro() {
     if (!validarCampos()) return;
+    if (enviando) return;
+    setEnviando(true);
 
-    // Por enquanto navega para Login e exibe mensagem de sucesso
-    // Futuramente: enviar dados para o backend
-    Alert.alert(
-      'Cadastro realizado!',
-      'Sua conta foi criada com sucesso.',
-      [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
-    );
+    try {
+      await publicarCadastro({ nome, email, telefone, senha });
+
+      Alert.alert(
+        'Sucesso',
+        'Cadastro enviado com sucesso! Faca o login para entrar.',
+        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+      );
+
+    } catch (erro) {
+      console.error('[Cadastro] Erro:', erro.message);
+      Alert.alert('Erro', 'Erro ao enviar cadastro. Verifique sua conexao.');
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
-    // Fundo com gradiente azul igual ao Welcome
     <LinearGradient
       colors={['#1A56DB', '#0B2065', '#1565C0']}
       locations={[0, 0.5, 1]}
       style={styles.container}
     >
-      {/* KeyboardAvoidingView empurra os campos para cima quando o teclado abre */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -166,7 +178,6 @@ export default function CadastroScreen({ navigation }) {
                 onChangeText={setSenha}
                 secureTextEntry={!senhaVisivel}
               />
-              {/* Botao olho — alterna entre mostrar e ocultar senha */}
               <TouchableOpacity onPress={() => setSenhaVisivel(!senhaVisivel)}>
                 <Ionicons
                   name={senhaVisivel ? 'eye-outline' : 'eye-off-outline'}
@@ -181,11 +192,16 @@ export default function CadastroScreen({ navigation }) {
 
           {/* ── BOTAO DE CADASTRAR (seta) ── */}
           <TouchableOpacity
-            style={styles.botaoCadastrar}
+            style={[styles.botaoCadastrar, enviando && styles.botaoCadastrarEnviando]}
             onPress={handleCadastro}
             activeOpacity={0.85}
+            disabled={enviando}
           >
-            <Ionicons name="arrow-forward" size={28} color="#fff" />
+            <Ionicons
+              name={enviando ? 'cloud-upload-outline' : 'arrow-forward'}
+              size={28}
+              color="#fff"
+            />
           </TouchableOpacity>
 
           {/* ── DECORACAO DA FABRICA NO RODAPE ── */}
@@ -201,17 +217,12 @@ export default function CadastroScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // Tela inteira com gradiente
   container: {
     flex: 1,
   },
-
-  // View que gerencia o comportamento do teclado
   keyboardView: {
     flex: 1,
   },
-
-  // Conteudo interno do ScrollView
   scrollContent: {
     flexGrow: 1,
     alignItems: 'center',
@@ -219,16 +230,12 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     paddingHorizontal: 24,
   },
-
-  // Seta de voltar no canto superior esquerdo
   botaoVoltar: {
     position: 'absolute',
     top: 16,
     left: 16,
     padding: 8,
   },
-
-  // Circulo azul com icone de pessoa no topo
   iconeTopo: {
     width: 72,
     height: 72,
@@ -240,23 +247,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-
-  // Titulo "Cadastro"
   titulo: {
     fontSize: 36,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 28,
   },
-
-  // Agrupa todos os campos
   formulario: {
     width: '100%',
     gap: 14,
     marginBottom: 24,
   },
-
-  // Container de cada campo (icone + separador + input)
   campoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -267,38 +268,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)',
     paddingHorizontal: 14,
   },
-
-  // Icone do lado esquerdo do campo
   campoIcone: {
     marginRight: 10,
   },
-
-  // Linha vertical separando icone do texto
   separador: {
     width: 1,
     height: 24,
     backgroundColor: 'rgba(255,255,255,0.2)',
     marginRight: 12,
   },
-
-  // Campo de texto
   input: {
     flex: 1,
     color: '#fff',
     fontSize: 15,
   },
-
-  // Input de senha precisa de espaco para o icone do olho
   inputSenha: {
     flex: 1,
   },
-
-  // Icone do olho (mostrar/ocultar senha)
   iconeOlho: {
     marginLeft: 8,
   },
-
-  // Botao verde com seta
   botaoCadastrar: {
     width: width * 0.85,
     height: 56,
@@ -313,8 +302,10 @@ const styles = StyleSheet.create({
     elevation: 8,
     marginBottom: 32,
   },
-
-  // Silhueta decorativa da fabrica no rodape
+  botaoCadastrarEnviando: {
+    backgroundColor: '#27AE60',
+    opacity: 0.8,
+  },
   rodape: {
     flexDirection: 'row',
     alignItems: 'flex-end',

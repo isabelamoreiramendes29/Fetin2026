@@ -5,13 +5,22 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// Importacao de todas as telas
+// ── TELAS PRINCIPAIS ──
 import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import CadastroScreen from '../screens/CadastroScreen';
 import SelecionarObraScreen from '../screens/SelecionarObraScreen';
-import HomeObraScreen from '../screens/HomeObraScreen';
 import CadastroObraScreen from '../screens/CadastroObraScreen';
+
+// ── MENU DA OBRA ──
+// Substitui o antigo HomeObraScreen (placeholder)
+import MenuObraScreen from '../screens/MenuObraScreen';
+
+// ── TELAS DO MENU DA OBRA ──
+import GraficoTemperaturaScreen from '../screens/GraficoTemperaturaScreen';
+import HistoricoTemperaturaScreen from '../screens/HistoricoTemperaturaScreen';
+import FinanceiroScreen from '../screens/FinanceiroScreen';
+import LocalizacaoScreen from '../screens/LocalizacaoScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,17 +30,28 @@ export default function AppNavigator() {
       <Stack.Navigator
         initialRouteName="Welcome"
         screenOptions={{
-          headerShown: false, // cada tela tem seu proprio cabecalho
+          headerShown: false, // cada tela tem seu proprio cabecalho personalizado
         }}
       >
-        <Stack.Screen name="Welcome" component={WelcomeScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Cadastro" component={CadastroScreen} />
-        <Stack.Screen name="SelecionarObra" component={SelecionarObraScreen} />
-        <Stack.Screen name="HomeObra" component={HomeObraScreen} />
-        <Stack.Screen name="CadastroObra" component={CadastroObraScreen} />
+        {/* ── FLUXO DE AUTENTICACAO ── */}
+        <Stack.Screen name="Welcome"        component={WelcomeScreen} />
+        <Stack.Screen name="Login"          component={LoginScreen} />
+        <Stack.Screen name="Cadastro"       component={CadastroScreen} />
 
-        {/* Novas telas serao adicionadas aqui */}
+        {/* ── SELECAO E CADASTRO DE OBRA ── */}
+        <Stack.Screen name="SelecionarObra" component={SelecionarObraScreen} />
+        <Stack.Screen name="CadastroObra"   component={CadastroObraScreen} />
+
+        {/* ── MENU PRINCIPAL DA OBRA ── */}
+        {/* Rota renomeada de HomeObra para MenuObra */}
+        <Stack.Screen name="MenuObra"       component={MenuObraScreen} />
+
+        {/* ── TELAS DO MENU ── */}
+        <Stack.Screen name="GraficoTemperatura"   component={GraficoTemperaturaScreen} />
+        <Stack.Screen name="HistoricoTemperatura" component={HistoricoTemperaturaScreen} />
+        <Stack.Screen name="Financeiro"           component={FinanceiroScreen} />
+        <Stack.Screen name="Localizacao"          component={LocalizacaoScreen} />
+
       </Stack.Navigator>
     </NavigationContainer>
   );

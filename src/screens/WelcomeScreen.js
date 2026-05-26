@@ -44,7 +44,7 @@ export default function WelcomeScreen({ navigation }) {
         {/* Botao ENTRAR — fundo verde solido */}
         <TouchableOpacity
           style={styles.buttonEntrar}
-          onPress={() => navigation.navigate('SelecionarObra')}
+          onPress={() => navigation.navigate('Login')}
           activeOpacity={0.85}
         >
           <Ionicons name="log-in-outline" size={22} color="#fff" style={styles.buttonIcon} />
