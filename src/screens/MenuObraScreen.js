@@ -30,8 +30,8 @@ export default function MenuObraScreen({ navigation, route }) {
       id: 'temperatura',
       icone: 'thermometer-outline',
       tipoIcone: 'Ionicons',
-      texto: 'Temperatura',
-      tela: 'GraficoTemperatura',
+      texto: 'Temperatura e Volume',
+      tela: 'Temperatura',
     },
     {
       id: 'historico',

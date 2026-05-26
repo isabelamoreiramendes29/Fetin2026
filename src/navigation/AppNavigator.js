@@ -17,7 +17,7 @@ import CadastroObraScreen from '../screens/CadastroObraScreen';
 import MenuObraScreen from '../screens/MenuObraScreen';
 
 // ── TELAS DO MENU DA OBRA ──
-import GraficoTemperaturaScreen from '../screens/GraficoTemperaturaScreen';
+import TemperaturaScreen from '../screens/TemperaturaScreen';
 import HistoricoTemperaturaScreen from '../screens/HistoricoTemperaturaScreen';
 import FinanceiroScreen from '../screens/FinanceiroScreen';
 import LocalizacaoScreen from '../screens/LocalizacaoScreen';
@@ -47,7 +47,7 @@ export default function AppNavigator() {
         <Stack.Screen name="MenuObra"       component={MenuObraScreen} />
 
         {/* ── TELAS DO MENU ── */}
-        <Stack.Screen name="GraficoTemperatura"   component={GraficoTemperaturaScreen} />
+        <Stack.Screen name="Temperatura"          component={TemperaturaScreen} />
         <Stack.Screen name="HistoricoTemperatura" component={HistoricoTemperaturaScreen} />
         <Stack.Screen name="Financeiro"           component={FinanceiroScreen} />
         <Stack.Screen name="Localizacao"          component={LocalizacaoScreen} />
