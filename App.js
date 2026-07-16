@@ -1,4 +1,4 @@
-// Arquivo principal do aplicativo
+// Arquivo princaipl do aplicativo
 // Ponto de entrada: carrega o sistema de navegacao que controla todas as telas
 
 import React from 'react';

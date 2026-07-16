@@ -8,13 +8,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-
-// Importa a logo oficial do Cemtinel
-const logo = require('../assets/images/logo.jpeg');
 
 // Pega a largura da tela para calcular tamanhos proporcionais
 const { width, height } = Dimensions.get('window');
@@ -30,12 +26,9 @@ export default function WelcomeScreen({ navigation }) {
 
       {/* ── AREA DO LOGO ── */}
       <View style={styles.logoArea}>
-        {/* Logo oficial do Cemtinel com fundo transparente */}
-        <Image
-          source={logo}
-          style={styles.logoImage}
-          resizeMode="contain"
-        />
+        {/* Placeholder do logo — substitua por <Image> quando tiver o arquivo */}
+        <Ionicons name="shield-checkmark" size={width * 0.28} color="#FFFFFF" />
+        <Text style={styles.logoText}>CEMTINEL</Text>
       </View>
 
       {/* ── BOTOES ── */}
@@ -87,10 +80,13 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
 
-  // Tamanho da imagem da logo
-  logoImage: {
-    width: width * 0.72,
-    height: width * 0.72,
+  // Texto da logo (placeholder)
+  logoText: {
+    marginTop: 12,
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    letterSpacing: 2,
   },
 
   // Agrupa os dois botoes
