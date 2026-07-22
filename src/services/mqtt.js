@@ -52,6 +52,7 @@ export function publicarCadastro(dados) {
               email: dados.email,
               telefone: dados.telefone,
               senha: dados.senha,
+              tipo: dados.tipo,
             });
 
             const mensagem = new Paho.Message(payload);

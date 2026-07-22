@@ -16,7 +16,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { publicarCadastro } from '../services/mqtt';
 
@@ -28,6 +28,7 @@ export default function CadastroScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
+  const [tipoUsuario, setTipoUsuario] = useState('');
 
   // Controla se a senha esta visivel ou oculta
   const [senhaVisivel, setSenhaVisivel] = useState(false);
@@ -59,6 +60,11 @@ export default function CadastroScreen({ navigation }) {
       return false;
     }
 
+    if (!tipoUsuario) {
+      Alert.alert('Tipo de usuario', 'Por favor, selecione o tipo de usuario.');
+      return false;
+    }
+
     return true;
   }
 
@@ -72,7 +78,7 @@ export default function CadastroScreen({ navigation }) {
     setEnviando(true);
 
     try {
-      await publicarCadastro({ nome, email, telefone, senha });
+      await publicarCadastro({ nome, email, telefone, senha, tipo: tipoUsuario });
 
       Alert.alert(
         'Sucesso',
@@ -188,6 +194,44 @@ export default function CadastroScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
+            {/* Campo: Tipo de Usuario */}
+            <View style={styles.tipoUsuarioContainer}>
+              <Text style={styles.tipoUsuarioLabel}>Tipo de Usuário:</Text>
+              <View style={styles.tipoUsuarioBotoes}>
+                <TouchableOpacity
+                  style={[
+                    styles.botaoTipo,
+                    tipoUsuario === 'mestre' && styles.botaoTipoSelecionado,
+                  ]}
+                  onPress={() => setTipoUsuario('mestre')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={22}
+                    color="#fff"
+                  />
+                  <Text style={styles.botaoTipoTexto}>Mestre de Obra</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.botaoTipo,
+                    tipoUsuario === 'construtora' && styles.botaoTipoSelecionado,
+                  ]}
+                  onPress={() => setTipoUsuario('construtora')}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons
+                    name="truck"
+                    size={22}
+                    color="#fff"
+                  />
+                  <Text style={styles.botaoTipoTexto}>Construtora</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
           </View>
 
           {/* ── BOTAO DE CADASTRAR (seta) ── */}
@@ -287,6 +331,41 @@ const styles = StyleSheet.create({
   },
   iconeOlho: {
     marginLeft: 8,
+  },
+  tipoUsuarioContainer: {
+    width: '100%',
+  },
+  tipoUsuarioLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  tipoUsuarioBotoes: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  botaoTipo: {
+    flex: 1,
+    height: 60,
+    borderWidth: 1.5,
+    borderColor: '#2ECC40',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  botaoTipoSelecionado: {
+    backgroundColor: '#22C55E',
+    borderColor: '#22C55E',
+  },
+  botaoTipoTexto: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+    textAlign: 'center',
   },
   botaoCadastrar: {
     width: width * 0.85,
