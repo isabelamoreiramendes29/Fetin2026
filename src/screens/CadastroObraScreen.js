@@ -11,9 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  Dimensions,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -22,8 +20,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import InputCampo from '../components/InputCampo';
 import SecaoTitulo from '../components/SecaoTitulo';
 import { useObras } from '../context/ObrasContext';
-
-const { width } = Dimensions.get('window');
+import { publicarCadastroObra, verificarEmailExiste } from '../services/mqtt';
 
 export default function CadastroObraScreen({ navigation }) {
   const { adicionarObra } = useObras();
@@ -42,14 +39,16 @@ export default function CadastroObraScreen({ navigation }) {
   const [mostrarPickerTermino, setMostrarPickerTermino] = useState(false);
 
   // ── ESTADOS DE RECURSOS ──
+  // Volume de cimento e sempre em m³ — nao existe campo de unidade
   const [volumeCimento, setVolumeCimento] = useState('');
-  const [unidadeCimento, setUnidadeCimento] = useState('Sacos');
-  const [mostrarDropdown, setMostrarDropdown] = useState(false);
-  const opcoesUnidade = ['Sacos', 'Toneladas', 'm³'];
 
   // ── ESTADOS DE RESPONSAVEIS ──
-  const [contratante, setContratante] = useState('');
-  const [responsavelTecnico, setResponsavelTecnico] = useState('');
+  // E-mails verificados no backend antes do cadastro prosseguir
+  const [emailConstrutora, setEmailConstrutora] = useState('');
+  const [emailMestre, setEmailMestre] = useState('');
+
+  // Controla o loading durante a verificacao dos e-mails no MQTT
+  const [carregando, setCarregando] = useState(false);
 
   // Aplica mascara no CEP: XXXXX-XXX
   function aplicarMascaraCep(valor) {
@@ -108,56 +107,90 @@ export default function CadastroObraScreen({ navigation }) {
     );
   }
 
-  // Valida todos os campos e salva a obra no contexto global
-  function handleSalvar() {
+  // Valida um endereco de e-mail no formato basico usuario@dominio.tld
+  function emailValido(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  // Valida todos os campos, verifica os e-mails no backend,
+  // publica no MQTT e salva a obra no contexto global
+  async function handleSalvar() {
     if (!cep)          return Alert.alert('Campo obrigatorio', 'Preencha o CEP.');
     if (!endereco)     return Alert.alert('Campo obrigatorio', 'Preencha o Endereco.');
     if (!numero)       return Alert.alert('Campo obrigatorio', 'Preencha o Numero.');
     if (!dataInicio)   return Alert.alert('Campo obrigatorio', 'Selecione a Data de inicio.');
     if (!dataTermino)  return Alert.alert('Campo obrigatorio', 'Selecione a Data de termino.');
-    if (!volumeCimento) return Alert.alert('Campo obrigatorio', 'Preencha o Volume de Cimento.');
-    if (!contratante)  return Alert.alert('Campo obrigatorio', 'Preencha o Contratante.');
+    if (!volumeCimento || parseFloat(volumeCimento) <= 0) {
+      return Alert.alert('Erro', 'Informe o volume de cimento em m³.');
+    }
 
     if (dataTermino <= dataInicio) {
       Alert.alert('Datas invalidas', 'A data de termino deve ser posterior a data de inicio.');
       return;
     }
 
-    adicionarObra({
-      nome: `Obra - ${endereco.split(',')[0]}`,
-      cep, endereco, numero, complemento,
-      dataInicio: formatarData(dataInicio),
-      dataTermino: formatarData(dataTermino),
-      volumeCimento, unidadeCimento,
-      contratante, responsavelTecnico,
-    });
+    if (!emailMestre || !emailValido(emailMestre)) {
+      return Alert.alert('Erro', 'Informe um e-mail valido do Mestre de Obra.');
+    }
+    if (!emailConstrutora || !emailValido(emailConstrutora)) {
+      return Alert.alert('Erro', 'Informe um e-mail valido da Construtora.');
+    }
 
-    Alert.alert('Sucesso!', 'Obra cadastrada com sucesso!', [
-      { text: 'OK', onPress: () => navigation.navigate('SelecionarObra') },
-    ]);
+    setCarregando(true);
+
+    try {
+      // Verifica se o e-mail do Mestre existe e e realmente do tipo Mestre (0)
+      const verifMestre = await verificarEmailExiste(emailMestre, 0);
+      if (!verifMestre.existe) {
+        Alert.alert('Erro', 'O e-mail do Mestre de Obra nao esta cadastrado no sistema. Por favor, faca o cadastro primeiro.');
+        return;
+      }
+
+      // Verifica se o e-mail da Construtora existe e e realmente do tipo Construtora (1)
+      const verifConstrutora = await verificarEmailExiste(emailConstrutora, 1);
+      if (!verifConstrutora.existe) {
+        Alert.alert('Erro', 'O e-mail da Construtora nao esta cadastrado no sistema. Por favor, faca o cadastro primeiro.');
+        return;
+      }
+
+      const nome = `Obra - ${endereco.split(',')[0]}`;
+
+      // Tenta publicar no MQTT — melhor esforco, nao bloqueia o cadastro local
+      try {
+        await publicarCadastroObra({
+          nome, cep, endereco, numero, complemento,
+          dataInicio: dataInicio.toISOString().split('T')[0],
+          dataTermino: dataTermino.toISOString().split('T')[0],
+          volumeCimento,
+          emailMestre, emailConstrutora,
+        });
+      } catch (erro) {
+        console.log('[CadastroObra] Erro no MQTT:', erro.message);
+      }
+
+      adicionarObra({
+        nome,
+        cep, endereco, numero, complemento,
+        dataInicio: formatarData(dataInicio),
+        dataTermino: formatarData(dataTermino),
+        volumeCimento,
+        emailMestre, emailConstrutora,
+      });
+
+      Alert.alert('Sucesso!', 'Obra cadastrada com sucesso!', [
+        { text: 'OK', onPress: () => navigation.navigate('SelecionarObra') },
+      ]);
+
+    } catch (erro) {
+      console.error('[CadastroObra] Erro na verificacao de e-mail:', erro.message);
+      Alert.alert('Erro', 'Nao foi possivel conectar ao servidor. Tente novamente.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
   return (
     <LinearGradient colors={['#1A56DB', '#0B2065', '#1565C0']} locations={[0, 0.5, 1]} style={styles.container}>
-
-      {/* Modal do dropdown de unidade — fora do ScrollView para sobrepor tudo */}
-      <Modal visible={mostrarDropdown} transparent animationType="fade" onRequestClose={() => setMostrarDropdown(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMostrarDropdown(false)}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitulo}>Selecione a unidade</Text>
-            {opcoesUnidade.map(opcao => (
-              <TouchableOpacity
-                key={opcao}
-                style={[styles.modalOpcao, unidadeCimento === opcao && styles.modalOpcaoSelecionada]}
-                onPress={() => { setUnidadeCimento(opcao); setMostrarDropdown(false); }}
-              >
-                <Text style={styles.modalOpcaoTexto}>{opcao}</Text>
-                {unidadeCimento === opcao && <Ionicons name="checkmark" size={18} color="#2ECC40" />}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -228,31 +261,31 @@ export default function CadastroObraScreen({ navigation }) {
           {/* ══ SECAO 3: RECURSOS - CIMENTO ══ */}
           <SecaoTitulo titulo="Recursos - Cimento" />
 
-          <View style={styles.linha}>
-            <InputCampo icone="cube-outline" placeholder="Volume de Cimento" value={volumeCimento}
-              onChangeText={setVolumeCimento} keyboardType="numeric" style={styles.campoVolume} />
-            <TouchableOpacity style={[styles.campoData, styles.campoUnidade]} onPress={() => setMostrarDropdown(true)}>
-              <Text style={styles.textoData}>{unidadeCimento}</Text>
-              <Ionicons name="chevron-down" size={18} color="#2ECC40" />
-            </TouchableOpacity>
-          </View>
+          <InputCampo icone="cube-outline" placeholder="Volume de Cimento (m³)" value={volumeCimento}
+            onChangeText={setVolumeCimento} keyboardType="numeric" style={styles.campoFull} />
 
           {/* ══ SECAO 4: RESPONSAVEIS ══ */}
           <SecaoTitulo titulo="Responsáveis" />
 
-          <InputCampo icone="person-outline" placeholder="Contratante" value={contratante}
-            onChangeText={setContratante} style={styles.campoFull} />
-          <InputCampo icone="construct-outline" placeholder="Responsável Técnico (opcional)"
-            value={responsavelTecnico} onChangeText={setResponsavelTecnico} style={styles.campoFull} />
+          <InputCampo icone="mail-outline" placeholder="E-mail da Construtora" value={emailConstrutora}
+            onChangeText={setEmailConstrutora} keyboardType="email-address" autoCapitalize="none" style={styles.campoFull} />
+          <InputCampo icone="mail-outline" placeholder="E-mail do Mestre de Obra"
+            value={emailMestre} onChangeText={setEmailMestre} keyboardType="email-address" autoCapitalize="none" style={styles.campoFull} />
 
           {/* ── BOTOES ── */}
           <View style={styles.linhaBotoes}>
             <TouchableOpacity style={styles.botaoCancelar} onPress={handleCancelar}>
               <Text style={styles.textoCancelar}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.botaoSalvar} onPress={handleSalvar}>
-              <MaterialCommunityIcons name="content-save" size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.textoSalvar}>Salvar Cadastro</Text>
+            <TouchableOpacity style={styles.botaoSalvar} onPress={handleSalvar} disabled={carregando}>
+              {carregando ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="content-save" size={18} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.textoSalvar}>Salvar Cadastro</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -297,8 +330,6 @@ const styles = StyleSheet.create({
   campoFull: { marginBottom: 10 },
   campoCep: { flex: 2 },
   campoMetade: { flex: 1 },
-  campoVolume: { flex: 3 },
-  campoUnidade: { flex: 2, justifyContent: 'space-between' },
 
   botaoBuscar: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -340,23 +371,4 @@ const styles = StyleSheet.create({
   textoNota: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 
   rodape: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', marginTop: 8 },
-
-  // Modal do dropdown de unidade
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-
-  modalBox: {
-    width: width * 0.7, backgroundColor: '#0D2B6B', borderRadius: 16,
-    padding: 20, borderWidth: 1, borderColor: 'rgba(46,204,64,0.4)',
-  },
-
-  modalTitulo: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 14, textAlign: 'center' },
-
-  modalOpcao: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-
-  modalOpcaoSelecionada: { backgroundColor: 'rgba(46,204,64,0.1)', borderRadius: 8, paddingHorizontal: 8 },
-
-  modalOpcaoTexto: { color: '#fff', fontSize: 15 },
 });

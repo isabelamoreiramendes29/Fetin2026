@@ -38,7 +38,7 @@ export default function SelecionarObraScreen({ navigation }) {
       navigation.navigate('CadastroObra');
     } else {
       // Vai para o menu da obra selecionada, passando os dados como parametro
-      navigation.navigate('MenuObra', { obraId: item.id, obraNome: item.nome });
+      navigation.navigate('MenuMestre', { obraId: item.id, obraNome: item.nome });
     }
   }
 

@@ -28,7 +28,7 @@ export default function CadastroScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
-  const [tipoUsuario, setTipoUsuario] = useState('');
+  const [tipoUsuario, setTipoUsuario] = useState(null);
 
   // Controla se a senha esta visivel ou oculta
   const [senhaVisivel, setSenhaVisivel] = useState(false);
@@ -60,7 +60,7 @@ export default function CadastroScreen({ navigation }) {
       return false;
     }
 
-    if (!tipoUsuario) {
+    if (tipoUsuario === null) {
       Alert.alert('Tipo de usuario', 'Por favor, selecione o tipo de usuario.');
       return false;
     }
@@ -201,9 +201,9 @@ export default function CadastroScreen({ navigation }) {
                 <TouchableOpacity
                   style={[
                     styles.botaoTipo,
-                    tipoUsuario === 'mestre' && styles.botaoTipoSelecionado,
+                    tipoUsuario === 0 && styles.botaoTipoSelecionado,
                   ]}
-                  onPress={() => setTipoUsuario('mestre')}
+                  onPress={() => setTipoUsuario(0)}
                   activeOpacity={0.85}
                 >
                   <Ionicons
@@ -217,9 +217,9 @@ export default function CadastroScreen({ navigation }) {
                 <TouchableOpacity
                   style={[
                     styles.botaoTipo,
-                    tipoUsuario === 'construtora' && styles.botaoTipoSelecionado,
+                    tipoUsuario === 1 && styles.botaoTipoSelecionado,
                   ]}
-                  onPress={() => setTipoUsuario('construtora')}
+                  onPress={() => setTipoUsuario(1)}
                   activeOpacity={0.85}
                 >
                   <MaterialCommunityIcons

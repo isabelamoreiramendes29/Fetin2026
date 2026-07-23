@@ -8,12 +8,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
 // Pega a largura da tela para calcular tamanhos proporcionais
 const { width, height } = Dimensions.get('window');
+
+const logoCemtinel = require('../../assets/logo.jpeg');
 
 export default function WelcomeScreen({ navigation }) {
   return (
@@ -26,9 +29,10 @@ export default function WelcomeScreen({ navigation }) {
 
       {/* ── AREA DO LOGO ── */}
       <View style={styles.logoArea}>
-        {/* Placeholder do logo — substitua por <Image> quando tiver o arquivo */}
-        <Ionicons name="shield-checkmark" size={width * 0.28} color="#FFFFFF" />
-        <Text style={styles.logoText}>CEMTINEL</Text>
+        <Image
+          source={logoCemtinel}
+          style={styles.logo}
+        />
       </View>
 
       {/* ── BOTOES ── */}
@@ -80,13 +84,13 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
 
-  // Texto da logo (placeholder)
-  logoText: {
-    marginTop: 12,
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: 'bold',
-    letterSpacing: 2,
+  // Imagem da logo
+  logo: {
+    width: 250,
+    height: 250,
+    resizeMode: 'contain',
+    marginBottom: 20,
+    alignSelf: 'center',
   },
 
   // Agrupa os dois botoes

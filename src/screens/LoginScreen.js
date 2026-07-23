@@ -26,6 +26,7 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [senhaVisivel, setSenhaVisivel] = useState(false);
+  const [tipoUsuario, setTipoUsuario] = useState('');
 
   // Controla o estado de envio (evita duplo clique no botao)
   const [enviando, setEnviando] = useState(false);
@@ -48,26 +49,40 @@ export default function LoginScreen({ navigation }) {
       return false;
     }
 
+    if (!tipoUsuario) {
+      Alert.alert('Tipo de usuario', 'Por favor, selecione o tipo de usuario.');
+      return false;
+    }
+
     return true;
   }
 
   // ── ACAO DO BOTAO ENTRAR ──
   // 1. Valida formato dos campos
-  // 2. Publica no MQTT
-  // 3. Navega para SelecionarObra
+  // 2. Publica no MQTT e aguarda a validacao do backend (topico app/resp)
+  // 3. Se valido, navega para SelecionarObra (Mestre) ou MenuConstrutora (Construtora)
   async function handleEntrar() {
     if (!validarCampos()) return;
     if (enviando) return;
     setEnviando(true);
 
     try {
-      await publicarLogin({ email, senha });
+      const resposta = await publicarLogin({ email, senha });
 
-      navigation.navigate('SelecionarObra');
+      if (!resposta.sucesso) {
+        Alert.alert('Erro', resposta.mensagem);
+        return;
+      }
+
+      if (tipoUsuario === 'construtora') {
+        navigation.navigate('MenuConstrutora');
+      } else {
+        navigation.navigate('SelecionarObra');
+      }
 
     } catch (erro) {
       console.error('[Login] Erro:', erro.message);
-      Alert.alert('Erro', 'Erro ao tentar fazer login. Tente novamente.');
+      Alert.alert('Erro', 'Nao foi possivel conectar ao servidor. Tente novamente.');
     } finally {
       setEnviando(false);
     }
@@ -149,6 +164,36 @@ export default function LoginScreen({ navigation }) {
           <TouchableOpacity style={styles.linkEsqueci} onPress={() => {}}>
             <Text style={styles.textoEsqueci}>Esqueci minha senha</Text>
           </TouchableOpacity>
+
+          {/* ── SELETOR: TIPO DE USUARIO ── */}
+          <View style={styles.tipoUsuarioContainer}>
+            <Text style={styles.tipoUsuarioLabel}>Estou entrando como:</Text>
+            <View style={styles.tipoUsuarioBotoes}>
+              <TouchableOpacity
+                style={[
+                  styles.botaoTipo,
+                  tipoUsuario === 'mestre' && styles.botaoTipoSelecionado,
+                ]}
+                onPress={() => setTipoUsuario('mestre')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="person-outline" size={22} color="#fff" />
+                <Text style={styles.botaoTipoTexto}>Mestre de Obra</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.botaoTipo,
+                  tipoUsuario === 'construtora' && styles.botaoTipoSelecionado,
+                ]}
+                onPress={() => setTipoUsuario('construtora')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="car-outline" size={22} color="#fff" />
+                <Text style={styles.botaoTipoTexto}>Construtora</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* ── BOTAO ENTRAR ── */}
           <TouchableOpacity
@@ -265,6 +310,42 @@ const styles = StyleSheet.create({
   textoEsqueci: {
     color: '#2ECC40',
     fontSize: 13,
+  },
+  tipoUsuarioContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  tipoUsuarioLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  tipoUsuarioBotoes: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  botaoTipo: {
+    flex: 1,
+    height: 60,
+    borderWidth: 1.5,
+    borderColor: '#2ECC40',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  botaoTipoSelecionado: {
+    backgroundColor: '#22C55E',
+    borderColor: '#22C55E',
+  },
+  botaoTipoTexto: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+    textAlign: 'center',
   },
   botaoEntrar: {
     width: width * 0.85,
