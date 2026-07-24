@@ -20,7 +20,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import InputCampo from '../components/InputCampo';
 import SecaoTitulo from '../components/SecaoTitulo';
 import { useObras } from '../context/ObrasContext';
-import { publicarCadastroObra, verificarEmailExiste } from '../services/mqtt';
+import { publicarCadastroObra } from '../services/mqtt';
 
 export default function CadastroObraScreen({ navigation }) {
   const { adicionarObra } = useObras();
@@ -43,9 +43,8 @@ export default function CadastroObraScreen({ navigation }) {
   const [volumeCimento, setVolumeCimento] = useState('');
 
   // ── ESTADOS DE RESPONSAVEIS ──
-  // E-mails verificados no backend antes do cadastro prosseguir
+  // E-mail verificado no backend antes do cadastro prosseguir
   const [emailConstrutora, setEmailConstrutora] = useState('');
-  const [emailMestre, setEmailMestre] = useState('');
 
   // Controla o loading durante a verificacao dos e-mails no MQTT
   const [carregando, setCarregando] = useState(false);
@@ -129,9 +128,6 @@ export default function CadastroObraScreen({ navigation }) {
       return;
     }
 
-    if (!emailMestre || !emailValido(emailMestre)) {
-      return Alert.alert('Erro', 'Informe um e-mail valido do Mestre de Obra.');
-    }
     if (!emailConstrutora || !emailValido(emailConstrutora)) {
       return Alert.alert('Erro', 'Informe um e-mail valido da Construtora.');
     }
@@ -139,21 +135,17 @@ export default function CadastroObraScreen({ navigation }) {
     setCarregando(true);
 
     try {
-      // Verifica se o e-mail do Mestre existe e e realmente do tipo Mestre (0)
-      const verifMestre = await verificarEmailExiste(emailMestre, 0);
-      if (!verifMestre.existe) {
-        Alert.alert('Erro', 'O e-mail do Mestre de Obra nao esta cadastrado no sistema. Por favor, faca o cadastro primeiro.');
-        return;
-      }
-
-      // Verifica se o e-mail da Construtora existe e e realmente do tipo Construtora (1)
-      const verifConstrutora = await verificarEmailExiste(emailConstrutora, 1);
-      if (!verifConstrutora.existe) {
-        Alert.alert('Erro', 'O e-mail da Construtora nao esta cadastrado no sistema. Por favor, faca o cadastro primeiro.');
-        return;
-      }
-
       const nome = `Obra - ${endereco.split(',')[0]}`;
+
+      console.log('[DEBUG] Nome:', nome);
+      console.log('[DEBUG] CEP:', cep);
+      console.log('[DEBUG] Endereço:', endereco);
+      console.log('[DEBUG] Número:', numero);
+      console.log('[DEBUG] Complemento:', complemento);
+      console.log('[DEBUG] Data Início:', dataInicio);
+      console.log('[DEBUG] Data Término:', dataTermino);
+      console.log('[DEBUG] Volume:', volumeCimento);
+      console.log('[DEBUG] Email Construtora:', emailConstrutora);
 
       // Tenta publicar no MQTT — melhor esforco, nao bloqueia o cadastro local
       try {
@@ -162,7 +154,7 @@ export default function CadastroObraScreen({ navigation }) {
           dataInicio: dataInicio.toISOString().split('T')[0],
           dataTermino: dataTermino.toISOString().split('T')[0],
           volumeCimento,
-          emailMestre, emailConstrutora,
+          emailConstrutora,
         });
       } catch (erro) {
         console.log('[CadastroObra] Erro no MQTT:', erro.message);
@@ -174,7 +166,7 @@ export default function CadastroObraScreen({ navigation }) {
         dataInicio: formatarData(dataInicio),
         dataTermino: formatarData(dataTermino),
         volumeCimento,
-        emailMestre, emailConstrutora,
+        emailConstrutora,
       });
 
       Alert.alert('Sucesso!', 'Obra cadastrada com sucesso!', [
@@ -182,8 +174,8 @@ export default function CadastroObraScreen({ navigation }) {
       ]);
 
     } catch (erro) {
-      console.error('[CadastroObra] Erro na verificacao de e-mail:', erro.message);
-      Alert.alert('Erro', 'Nao foi possivel conectar ao servidor. Tente novamente.');
+      console.error('[CadastroObra] Erro ao salvar cadastro:', erro.message);
+      Alert.alert('Erro', 'Nao foi possivel salvar a obra. Tente novamente.');
     } finally {
       setCarregando(false);
     }
@@ -264,13 +256,11 @@ export default function CadastroObraScreen({ navigation }) {
           <InputCampo icone="cube-outline" placeholder="Volume de Cimento (m³)" value={volumeCimento}
             onChangeText={setVolumeCimento} keyboardType="numeric" style={styles.campoFull} />
 
-          {/* ══ SECAO 4: RESPONSAVEIS ══ */}
-          <SecaoTitulo titulo="Responsáveis" />
+          {/* ══ SECAO 4: RESPONSAVEL ══ */}
+          <SecaoTitulo titulo="Responsável" />
 
           <InputCampo icone="mail-outline" placeholder="E-mail da Construtora" value={emailConstrutora}
             onChangeText={setEmailConstrutora} keyboardType="email-address" autoCapitalize="none" style={styles.campoFull} />
-          <InputCampo icone="mail-outline" placeholder="E-mail do Mestre de Obra"
-            value={emailMestre} onChangeText={setEmailMestre} keyboardType="email-address" autoCapitalize="none" style={styles.campoFull} />
 
           {/* ── BOTOES ── */}
           <View style={styles.linhaBotoes}>

@@ -138,7 +138,6 @@ export function publicarCadastroObra(dados) {
               data_inicio: dados.dataInicio,
               data_termino: dados.dataTermino,
               volume_cimento: Number(dados.volumeCimento),
-              email_mestre: dados.emailMestre,
               email_construtora: dados.emailConstrutora,
             });
 
