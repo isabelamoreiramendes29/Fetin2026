@@ -134,7 +134,6 @@ export function publicarCadastroObra(dados) {
               cep: dados.cep,
               endereco: dados.endereco,
               numero: dados.numero,
-              complemento: dados.complemento,
               data_inicio: dados.dataInicio,
               data_termino: dados.dataTermino,
               volume_cimento: Number(dados.volumeCimento),

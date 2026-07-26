@@ -11,6 +11,7 @@ import LoginScreen from '../screens/LoginScreen';
 import CadastroScreen from '../screens/CadastroScreen';
 import SelecionarObraScreen from '../screens/SelecionarObraScreen';
 import CadastroObraScreen from '../screens/CadastroObraScreen';
+import SelecionarObraConstrutoraScreen from '../screens/SelecionarObraConstrutoraScreen';
 
 // ── MENU DO MESTRE DE OBRA ──
 // Substitui o antigo HomeObraScreen (placeholder). Renomeada de MenuObraScreen.
@@ -60,6 +61,9 @@ export default function AppNavigator() {
         <Stack.Screen name="HistoricoTemperatura" component={HistoricoTemperaturaScreen} />
         <Stack.Screen name="Financeiro"           component={FinanceiroScreen} />
         <Stack.Screen name="Localizacao"          component={LocalizacaoScreen} />
+
+        {/* ── SELECAO DE OBRA DA CONSTRUTORA ── */}
+        <Stack.Screen name="SelecionarObraConstrutora" component={SelecionarObraConstrutoraScreen} />
 
         {/* ── MENU PRINCIPAL DA CONSTRUTORA ── */}
         <Stack.Screen name="MenuConstrutora" component={MenuConstrutoraScreen} />

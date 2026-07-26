@@ -29,7 +29,6 @@ export default function CadastroObraScreen({ navigation }) {
   const [cep, setCep] = useState('');
   const [endereco, setEndereco] = useState('');
   const [numero, setNumero] = useState('');
-  const [complemento, setComplemento] = useState('');
   const [buscandoCep, setBuscandoCep] = useState(false);
 
   // ── ESTADOS DE CRONOGRAMA ──
@@ -141,7 +140,6 @@ export default function CadastroObraScreen({ navigation }) {
       console.log('[DEBUG] CEP:', cep);
       console.log('[DEBUG] Endereço:', endereco);
       console.log('[DEBUG] Número:', numero);
-      console.log('[DEBUG] Complemento:', complemento);
       console.log('[DEBUG] Data Início:', dataInicio);
       console.log('[DEBUG] Data Término:', dataTermino);
       console.log('[DEBUG] Volume:', volumeCimento);
@@ -150,7 +148,7 @@ export default function CadastroObraScreen({ navigation }) {
       // Tenta publicar no MQTT — melhor esforco, nao bloqueia o cadastro local
       try {
         await publicarCadastroObra({
-          nome, cep, endereco, numero, complemento,
+          nome, cep, endereco, numero,
           dataInicio: dataInicio.toISOString().split('T')[0],
           dataTermino: dataTermino.toISOString().split('T')[0],
           volumeCimento,
@@ -162,7 +160,7 @@ export default function CadastroObraScreen({ navigation }) {
 
       adicionarObra({
         nome,
-        cep, endereco, numero, complemento,
+        cep, endereco, numero,
         dataInicio: formatarData(dataInicio),
         dataTermino: formatarData(dataTermino),
         volumeCimento,
@@ -216,12 +214,8 @@ export default function CadastroObraScreen({ navigation }) {
           <InputCampo icone="location-outline" placeholder="Endereço" value={endereco}
             onChangeText={setEndereco} style={styles.campoFull} />
 
-          <View style={styles.linha}>
-            <InputCampo icone="pricetag-outline" placeholder="Número" value={numero}
-              onChangeText={setNumero} keyboardType="numeric" style={styles.campoMetade} />
-            <InputCampo icone="grid-outline" placeholder="Complemento" value={complemento}
-              onChangeText={setComplemento} style={styles.campoMetade} />
-          </View>
+          <InputCampo icone="pricetag-outline" placeholder="Número" value={numero}
+            onChangeText={setNumero} keyboardType="numeric" style={styles.campoFull} />
 
           {/* ══ SECAO 2: CRONOGRAMA ══ */}
           <SecaoTitulo titulo="Cronograma" />

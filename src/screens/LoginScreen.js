@@ -75,7 +75,7 @@ export default function LoginScreen({ navigation }) {
       }
 
       if (tipoUsuario === 'construtora') {
-        navigation.navigate('MenuConstrutora');
+        navigation.navigate('SelecionarObraConstrutora');
       } else {
         navigation.navigate('SelecionarObra');
       }

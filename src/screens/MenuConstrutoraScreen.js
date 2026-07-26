@@ -19,7 +19,9 @@ import { colors } from '../styles/colors';
 
 const { width } = Dimensions.get('window');
 
-export default function MenuConstrutoraScreen({ navigation }) {
+export default function MenuConstrutoraScreen({ navigation, route }) {
+  // Dados da obra selecionada na tela anterior (SelecionarObraConstrutora)
+  const { obraId, obraNome } = route.params || {};
 
   // ── ITENS DO MENU ──
   // Cada item define: icone, familia do icone, texto exibido e a tela de destino
@@ -73,18 +75,21 @@ export default function MenuConstrutoraScreen({ navigation }) {
         {/* ── CABECALHO ── */}
         <View style={styles.cabecalho}>
 
-          {/* Botao de voltar circular — fundo azul + borda verde — volta para Login */}
+          {/* Botao de voltar circular — fundo azul + borda verde — volta para Selecionar Obra */}
           <TouchableOpacity
             style={styles.botaoVoltar}
-            onPress={() => navigation.navigate('Login')}
+            onPress={() => navigation.navigate('SelecionarObraConstrutora')}
             activeOpacity={0.8}
           >
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
 
-          {/* Titulo MENU CONSTRUTORA + linha decorativa verde */}
+          {/* Titulo MENU CONSTRUTORA + nome da obra + linha decorativa verde */}
           <View style={styles.tituloContainer}>
             <Text style={styles.titulo}>MENU CONSTRUTORA</Text>
+            {obraNome && (
+              <Text style={styles.nomeObra}>{obraNome}</Text>
+            )}
             <View style={styles.linhaDecorada} />
           </View>
 
@@ -182,6 +187,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     alignSelf: 'center',
     paddingHorizontal: 60,
+  },
+
+  // Nome da obra selecionada, exibido abaixo do titulo
+  nomeObra: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 6,
+    textAlign: 'center',
   },
 
   // Linha verde decorativa abaixo do titulo
