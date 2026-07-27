@@ -299,6 +299,301 @@ export function verificarEmailExiste(email, tipoEsperado) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// PUBLICAR ENVIO DE CAMINHAO
+// Mesmo padrao autocontido da publicarCadastro/publicarCadastroObra.
+// Cria o proprio cliente, conecta, publica e desconecta.
+// ─────────────────────────────────────────────────────────────
+export function publicarEnvioCaminhao(dados) {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('[MQTT Caminhão] Iniciando conexao...');
+      console.log('[MQTT Caminhão] Dados recebidos:', dados);
+
+      const cliente = new Paho.Client(
+        mqttConfig.host,
+        mqttConfig.porta,
+        '/mqtt',
+        gerarClientId()
+      );
+
+      cliente.onConnectionLost = (resposta) => {
+        if (resposta.errorCode !== 0) {
+          console.warn('[MQTT Caminhão] Conexao perdida:', resposta.errorMessage);
+        }
+      };
+
+      cliente.connect({
+        useSSL: false,
+        cleanSession: true,
+        timeout: 10,
+
+        onSuccess: () => {
+          console.log('[MQTT Caminhão] Conectado ao broker.');
+
+          try {
+            const payload = JSON.stringify({
+              caminhao: dados.caminhao,       // 'X' ou 'Y'
+              obra_id: dados.obraId,
+              obra_nome: dados.obraNome,
+              data_envio: new Date().toISOString(),
+            });
+
+            const mensagem = new Paho.Message(payload);
+            mensagem.destinationName = mqttConfig.topicoEnviarCaminhao; // app/enviar_caminhao
+            mensagem.qos = mqttConfig.qos;
+            mensagem.retained = false;
+
+            cliente.send(mensagem);
+
+            console.log('[MQTT Caminhão] Publicado no topico', mqttConfig.topicoEnviarCaminhao);
+            console.log('[MQTT Caminhão] Payload:', payload);
+
+            if (cliente.isConnected()) {
+              cliente.disconnect();
+            }
+
+            resolve();
+
+          } catch (erroPublicar) {
+            console.error('[MQTT Caminhão] Erro ao publicar:', erroPublicar.message);
+            if (cliente.isConnected()) cliente.disconnect();
+            reject(erroPublicar);
+          }
+        },
+
+        onFailure: (erro) => {
+          console.error('[MQTT Caminhão] Falha ao conectar:', erro.errorMessage);
+          reject(new Error(erro.errorMessage));
+        },
+      });
+
+    } catch (erro) {
+      console.error('[MQTT Caminhão] Erro ao criar cliente:', erro.message);
+      reject(erro);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// INSCREVER EM TEMPERATURA EM TEMPO REAL, FILTRADA POR OBRA
+// Diferente das outras funcoes deste arquivo, esta conexao NAO e efemera:
+// fica aberta enquanto a tela estiver montada, recebendo cada nova leitura
+// via callback. Retorna uma funcao de cleanup (desinscreve + desconecta),
+// que deve ser chamada quando a tela for desmontada.
+// Formato da mensagem: { status, mensagem, caminhao: { id_obra, temperatura_interna, ... } }
+// So usa caminhao.id_obra (filtro) e caminhao.temperatura_interna (valor) — o resto e ignorado.
+// Usa == (nao ===) porque id_obra pode chegar como number e obraId como string.
+// ─────────────────────────────────────────────────────────────
+export function inscreverTemperatura(obraId, callback) {
+  try {
+    console.log(`[MQTT Temperatura] Iniciando conexao... Filtro obra_id: ${obraId}`);
+
+    const cliente = new Paho.Client(
+      mqttConfig.host,
+      mqttConfig.porta,
+      '/mqtt',
+      gerarClientId()
+    );
+
+    cliente.onConnectionLost = (resposta) => {
+      if (resposta.errorCode !== 0) {
+        console.warn('[MQTT Temperatura] Conexao perdida:', resposta.errorMessage);
+      }
+    };
+
+    cliente.onMessageArrived = (mensagemRecebida) => {
+      if (mensagemRecebida.destinationName !== mqttConfig.topicoRespostaCaminhao) return;
+
+      let payload;
+      try {
+        payload = JSON.parse(mensagemRecebida.payloadString);
+      } catch (erro) {
+        console.error('[MQTT Temperatura] Erro ao processar JSON:', erro.message);
+        return;
+      }
+
+      // So interessa o objeto "caminhao" — status/mensagem na raiz sao ignorados
+      const caminhao = payload.caminhao;
+      if (!caminhao) {
+        console.log('[MQTT Temperatura] Payload sem campo "caminhao", ignorado:', payload);
+        return;
+      }
+
+      if (caminhao.id_obra != obraId) {
+        console.log(`[MQTT Temperatura] Ignorado (obra ${caminhao.id_obra} != ${obraId})`);
+        return;
+      }
+
+      const valor = parseFloat(caminhao.temperatura_interna);
+      if (isNaN(valor)) {
+        console.error('[MQTT Temperatura] Valor invalido:', caminhao.temperatura_interna);
+        return;
+      }
+
+      console.log(`[MQTT Temperatura] Obra ${obraId} recebeu:`, valor);
+      callback(valor);
+    };
+
+    cliente.connect({
+      useSSL: false,
+      cleanSession: true,
+      timeout: 10,
+
+      onSuccess: () => {
+        console.log('[MQTT Temperatura] Conectado ao broker.');
+
+        cliente.subscribe(mqttConfig.topicoRespostaCaminhao, {
+          qos: mqttConfig.qos,
+
+          onSuccess: () => {
+            console.log('[MQTT Temperatura] Inscrito no topico', mqttConfig.topicoRespostaCaminhao);
+          },
+
+          onFailure: (erro) => {
+            console.error('[MQTT Temperatura] Falha ao se inscrever:', erro.errorMessage);
+          },
+        });
+      },
+
+      onFailure: (erro) => {
+        console.error('[MQTT Temperatura] Falha ao conectar:', erro.errorMessage);
+      },
+    });
+
+    // Funcao de cleanup — desinscreve e desconecta a conexao persistente
+    return () => {
+      try {
+        if (cliente.isConnected()) {
+          cliente.unsubscribe(mqttConfig.topicoRespostaCaminhao);
+          cliente.disconnect();
+          console.log(`[MQTT Temperatura] Desinscrito e desconectado (obra ${obraId}).`);
+        }
+      } catch (erro) {
+        console.error('[MQTT Temperatura] Erro ao desinscrever:', erro.message);
+      }
+    };
+
+  } catch (erro) {
+    console.error('[MQTT Temperatura] Erro ao criar cliente:', erro.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// INSCREVER NA LISTA DE OBRAS
+// Mesmo padrao persistente da inscreverTemperatura: conexao fica aberta
+// enquanto o app estiver aberto, recebendo a lista completa de obras
+// toda vez que o backend publicar. Retorna funcao de cleanup.
+// Formato esperado: array JSON de obras, campos em snake_case
+// (data_inicio, data_termino, volume_cimento, email_construtora) —
+// normalizados aqui para camelCase, igual ao formato usado no resto do app.
+// ─────────────────────────────────────────────────────────────
+export function inscreverListaObras(callback) {
+  try {
+    console.log('[MQTT Obras] Iniciando conexao...');
+
+    const cliente = new Paho.Client(
+      mqttConfig.host,
+      mqttConfig.porta,
+      '/mqtt',
+      gerarClientId()
+    );
+
+    cliente.onConnectionLost = (resposta) => {
+      if (resposta.errorCode !== 0) {
+        console.warn('[MQTT Obras] Conexao perdida:', resposta.errorMessage);
+      }
+    };
+
+    cliente.onMessageArrived = (mensagemRecebida) => {
+      if (mensagemRecebida.destinationName !== mqttConfig.topicoRespostaObras) return;
+
+      let payload;
+      try {
+        payload = JSON.parse(mensagemRecebida.payloadString);
+      } catch (erro) {
+        console.error('[MQTT Obras] Erro ao processar JSON:', erro.message);
+        return;
+      }
+
+      // O backend pode mandar um array direto, ou um objeto
+      // { status, tipo, quantidade, obras: [...] } — aceitamos os dois
+      let listaObras;
+      if (Array.isArray(payload)) {
+        listaObras = payload;
+      } else if (payload && Array.isArray(payload.obras)) {
+        listaObras = payload.obras;
+      } else {
+        console.warn('[MQTT Obras] Formato desconhecido:', payload);
+        return;
+      }
+
+      // Normaliza os campos do backend (snake_case) para o formato usado no app (camelCase),
+      // com valores padrao para campos ausentes/nulos
+      const listaNormalizada = listaObras.map((obra) => ({
+        id: (obra.id_obra ?? obra.id ?? Date.now()).toString(),
+        nome: obra.nome || 'Sem nome',
+        status: obra.status || '',
+        cep: obra.cep || '',
+        endereco: obra.endereco || '',
+        numero: obra.numero || '',
+        complemento: obra.complemento || '',
+        dataInicio: obra.data_inicio || '',
+        dataTermino: obra.data_termino || '',
+        volumeCimento: obra.volume_cimento || 0,
+        emailConstrutora: obra.email_construtora || '',
+      }));
+
+      console.log('[MQTT Obras] Obras normalizadas:', listaNormalizada);
+      callback(listaNormalizada);
+    };
+
+    cliente.connect({
+      useSSL: false,
+      cleanSession: true,
+      timeout: 10,
+
+      onSuccess: () => {
+        console.log('[MQTT Obras] Conectado ao broker.');
+
+        cliente.subscribe(mqttConfig.topicoRespostaObras, {
+          qos: mqttConfig.qos,
+
+          onSuccess: () => {
+            console.log('[MQTT Obras] Inscrito no topico', mqttConfig.topicoRespostaObras);
+          },
+
+          onFailure: (erro) => {
+            console.error('[MQTT Obras] Falha ao se inscrever:', erro.errorMessage);
+          },
+        });
+      },
+
+      onFailure: (erro) => {
+        console.error('[MQTT Obras] Falha ao conectar:', erro.errorMessage);
+      },
+    });
+
+    // Funcao de cleanup — desinscreve e desconecta a conexao persistente
+    return () => {
+      try {
+        if (cliente.isConnected()) {
+          cliente.unsubscribe(mqttConfig.topicoRespostaObras);
+          cliente.disconnect();
+          console.log('[MQTT Obras] Desinscrito e desconectado.');
+        }
+      } catch (erro) {
+        console.error('[MQTT Obras] Erro ao desinscrever:', erro.message);
+      }
+    };
+
+  } catch (erro) {
+    console.error('[MQTT Obras] Erro ao criar cliente:', erro.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // PUBLICAR DADOS DE LOGIN
 // Mesmo padrao autocontido da publicarCadastro, mas dessa vez
 // tambem se inscreve em topicoResposta (app/resp) e aguarda o

@@ -32,6 +32,22 @@ const mqttConfig = {
   // Responde: { email, existe, tipo }  (existe: 1 = existe, 0 = nao existe)
   topicoRespostaEmail: 'app/resp_email',
 
+  // Topico onde o sensor publica a temperatura atual do cimento
+  // Formato: apenas o numero, sem JSON (ex: "75.5")
+  topicoTemperatura: 'app/temperatura',
+
+  // Topico onde o backend publica a lista completa de obras
+  // Formato: array JSON de obras (ver inscreverListaObras em services/mqtt.js)
+  topicoRespostaObras: 'obras/resposta',
+
+  // Topico onde o app publica o envio de um caminhao para uma obra
+  // Formato: { caminhao, obra_id, obra_nome, data_envio }
+  topicoEnviarCaminhao: 'app/enviar_caminhao',
+
+  // Topico onde o backend responde ao envio de caminhao com a temperatura
+  // Formato: { obra_id, temperatura } (campos extras sao ignorados)
+  topicoRespostaCaminhao: 'app/enviar_caminhao/resp',
+
   // Qualidade de servico — QoS 1 = entrega garantida pelo menos uma vez
   qos: 1,
 };

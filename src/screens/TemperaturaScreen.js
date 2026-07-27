@@ -2,7 +2,7 @@
 // Fluxo: SelecionarObra → MenuObra → Temperatura (esta tela)
 // Recebe obraId e obraNome via route.params
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import VelocimetroTemperatura from '../components/VelocimetroTemperatura';
+import { inscreverTemperatura } from '../services/mqtt';
 
 const { width } = Dimensions.get('window');
 
@@ -75,6 +76,32 @@ export default function TemperaturaScreen({ navigation, route }) {
   // Temperatura inicial simulada em 75°C (zona NORMAL)
   const [temperatura, setTemperatura] = useState(75);
 
+  // Indica se ja chegou alguma leitura real via MQTT
+  const [conectado, setConectado] = useState(false);
+
+  // Inscreve no topico de temperatura ao montar a tela, desinscreve ao desmontar
+  // Filtra pela obra atual — so atualiza quando obra_id bate com obraId
+  useEffect(() => {
+    if (!obraId) {
+      console.warn('[Temperatura] Nenhuma obra selecionada!');
+      return;
+    }
+
+    console.log(`🔵 [Temperatura] Inscrevendo para obra ${obraId}`);
+
+    const desinscrever = inscreverTemperatura(obraId, (novaTemperatura) => {
+      console.log(`🌡️🌡️🌡️ [Temperatura] CALLBACK CHAMADO com valor: ${novaTemperatura}`);
+      setTemperatura(novaTemperatura);
+      setConectado(true);
+      console.log(`✅ [Temperatura] setTemperatura executado`);
+    });
+
+    return () => {
+      if (desinscrever) desinscrever();
+      setConectado(false);
+    };
+  }, [obraId]);
+
   // Volume de cimento
   const volumePlanejado = 100;
   const unidadeCimento  = 'sacos';
@@ -105,6 +132,8 @@ export default function TemperaturaScreen({ navigation, route }) {
     iconeVolume    = 'trending-up';
     detalhesVolume = `${diffVolume} ${unidadeCimento} a mais que o planejado`;
   }
+
+  console.log(`🎨 [Temperatura] Renderizando com valor: ${temperatura} | zona: ${zonaAtual.nome} | cor: ${zonaAtual.cor}`);
 
   return (
     <LinearGradient
@@ -144,6 +173,17 @@ export default function TemperaturaScreen({ navigation, route }) {
 
         {/* ── NOME DA OBRA ── */}
         <Text style={styles.nomeObra}>{obraNome}</Text>
+
+        {/* ── STATUS DA CONEXAO MQTT ── */}
+        <View style={styles.statusMQTT}>
+          <View style={[
+            styles.bolinhaStatus,
+            { backgroundColor: conectado ? '#22C55E' : '#EF4444' }
+          ]} />
+          <Text style={styles.textoStatus}>
+            {conectado ? 'Recebendo dados em tempo real' : 'Aguardando dados do sensor'}
+          </Text>
+        </View>
 
         {/* ── CARD PRINCIPAL ── */}
         {/* Contem: velocimetro + display digital + texto de status */}
@@ -335,6 +375,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 18,
     letterSpacing: 0.4,
+  },
+
+  // ── STATUS DA CONEXAO MQTT ──
+  statusMQTT: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+    marginTop: 10,
+  },
+
+  bolinhaStatus: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+
+  textoStatus: {
+    color: 'white',
+    fontSize: 14,
   },
 
   // ── CARD PRINCIPAL ──

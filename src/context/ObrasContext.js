@@ -1,7 +1,8 @@
 // Context API — gerencia o estado global das obras do usuario
 // Qualquer tela do app pode acessar e modificar a lista de obras usando useObras()
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { inscreverListaObras } from '../services/mqtt';
 
 // Cria o contexto vazio
 const ObrasContext = createContext();
@@ -27,6 +28,21 @@ const obrasIniciais = [
 // Provider — envolve o app inteiro e disponibiliza os dados para todas as telas
 export function ObrasProvider({ children }) {
   const [obras, setObras] = useState(obrasIniciais);
+
+  // Inscreve no topico obras/resposta ao abrir o app — o backend publica a
+  // lista completa de obras, que substitui o estado local
+  useEffect(() => {
+    console.log('[ObrasContext] Iniciando inscrição MQTT');
+
+    const desinscrever = inscreverListaObras((listaObras) => {
+      console.log('[ObrasContext] Atualizando obras com lista recebida');
+      setObras(listaObras);
+    });
+
+    return () => {
+      if (desinscrever) desinscrever();
+    };
+  }, []);
 
   // Adiciona uma nova obra na lista
   function adicionarObra(novaObra) {
