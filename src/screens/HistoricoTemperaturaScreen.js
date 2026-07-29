@@ -219,12 +219,6 @@ export default function HistoricoTemperaturaScreen({ navigation, route }) {
           <Text style={styles.botaoAtualizarTexto}>🔄  Atualizar dados</Text>
         </TouchableOpacity>
 
-        {/* ── SILHUETA DECORATIVA DA FABRICA ── */}
-        <View style={styles.rodape}>
-          <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-          <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-        </View>
-
         {/* Nota de demonstracao */}
         <Text style={styles.notaDemonstracao}>
           * Dados de demonstração — sensor em integração
@@ -390,11 +384,6 @@ const styles = StyleSheet.create({
     color: '#22C55E', fontSize: 14, fontWeight: 'bold', letterSpacing: 0.5,
   },
 
-  // ── RODAPE ──
-  rodape: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    justifyContent: 'center', marginBottom: 10,
-  },
 
   notaDemonstracao: {
     color: 'rgba(255,255,255,0.3)',

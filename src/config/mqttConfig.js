@@ -3,7 +3,7 @@
 
 const mqttConfig = {
   // Endereco IP do broker na rede local
-  host: '192.168.66.54',
+  host: '192.168.66.73',
 
   // Porta WebSocket do Mosquitto (obrigatoria para Expo Go / React Native)
   porta: 9001,

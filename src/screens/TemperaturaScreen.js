@@ -286,12 +286,6 @@ export default function TemperaturaScreen({ navigation, route }) {
 
         </View>
 
-        {/* ── SILHUETA DECORATIVA DA FABRICA (rodape) ── */}
-        <View style={styles.rodape}>
-          <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-          <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-        </View>
-
       </ScrollView>
     </LinearGradient>
   );
@@ -497,13 +491,6 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  // Silhueta decorativa da fabrica
-  rodape: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
 
   // ── CARD VOLUME DE CIMENTO ──
   cardVolume: {

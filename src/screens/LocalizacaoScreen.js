@@ -360,11 +360,6 @@ export default function LocalizacaoScreen({ navigation, route }) {
 
         </View>
 
-        {/* ── RODAPÉ ── */}
-        <View style={styles.rodape}>
-          <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-          <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-        </View>
 
         <Text style={styles.notaDemonstracao}>
           * Mapa simulado — LoRa em integração
@@ -539,13 +534,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── RODAPÉ ──
-  rodape: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
 
   notaDemonstracao: {
     color: 'rgba(255,255,255,0.3)',

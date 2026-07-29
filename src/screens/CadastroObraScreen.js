@@ -279,12 +279,6 @@ export default function CadastroObraScreen({ navigation }) {
             <Text style={styles.textoNota}> *Nota: O volume de cimento é obrigatório.</Text>
           </View>
 
-          {/* Silhueta decorativa da fabrica */}
-          <View style={styles.rodape}>
-            <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-            <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-          </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -354,5 +348,4 @@ const styles = StyleSheet.create({
 
   textoNota: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 
-  rodape: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', marginTop: 8 },
 });

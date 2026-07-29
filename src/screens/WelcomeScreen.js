@@ -59,13 +59,6 @@ export default function WelcomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* ── SILHUETA DECORATIVA DA FABRICA (rodape) ── */}
-      {/* Placeholder — substitua por <Image> quando tiver o arquivo */}
-      <View style={styles.bottomDecoration}>
-        <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-        <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-      </View>
-
     </LinearGradient>
   );
 }
@@ -139,11 +132,4 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Silhueta decorativa no rodape da tela
-  bottomDecoration: {
-    position: 'absolute',
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
 });

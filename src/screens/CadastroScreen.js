@@ -248,12 +248,6 @@ export default function CadastroScreen({ navigation }) {
             />
           </TouchableOpacity>
 
-          {/* ── DECORACAO DA FABRICA NO RODAPE ── */}
-          <View style={styles.rodape}>
-            <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-            <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-          </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -384,10 +378,5 @@ const styles = StyleSheet.create({
   botaoCadastrarEnviando: {
     backgroundColor: '#27AE60',
     opacity: 0.8,
-  },
-  rodape: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 8,
   },
 });

@@ -96,13 +96,6 @@ export default function SelecionarObraConstrutoraScreen({ navigation }) {
             </Text>
           </View>
         }
-        // Rodape com silhueta da fabrica
-        ListFooterComponent={
-          <View style={styles.rodape}>
-            <Ionicons name="business" size={90} color="rgba(255,255,255,0.08)" />
-            <Ionicons name="business" size={70} color="rgba(255,255,255,0.06)" style={{ marginLeft: -20 }} />
-          </View>
-        }
       />
 
     </LinearGradient>
@@ -226,11 +219,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Silhueta decorativa no rodape
-  rodape: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
 });
