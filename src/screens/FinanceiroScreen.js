@@ -1,8 +1,10 @@
 // Tela Financeiro — controle de gastos com cimento por obra
-// Acesso exclusivo do Mestre. Cadastro manual, dados salvos no FinanceiroContext (sem MQTT)
+// Acesso exclusivo do Mestre. Cadastro manual, salvo no FinanceiroContext e
+// publicado no MQTT (topico app/financeiro); backend responde em app/financeiro/resp
+// Os cards de resumo exibem os totais vindos do backend (resumo_obra), nao do Context
 // Recebe obraId e obraNome via route.params
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,6 +24,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useFinanceiro } from '../context/FinanceiroContext';
+import { publicarFinanceiro, inscreverFinanceiro } from '../services/mqtt';
 
 // Formata numero para o padrao monetario brasileiro: R$ X.XXX,XX
 function formatarMoeda(valor) {
@@ -50,6 +53,31 @@ export default function FinanceiroScreen({ navigation, route }) {
   const [valor, setValor] = useState('');
   const inputValorRef = useRef(null);
 
+  // ── DADOS FINANCEIROS DO BACKEND (fonte dos cards de resumo) ──
+  const [totalGastoBackend, setTotalGastoBackend] = useState(0);
+  const [totalCimentoBackend, setTotalCimentoBackend] = useState(0);
+
+  // Inscreve no topico de resposta do financeiro (app/financeiro/resp),
+  // filtrado pela obra selecionada. Desinscreve ao trocar de obra ou sair da tela.
+  useEffect(() => {
+    if (!obraId) {
+      console.warn('[Financeiro] Nenhuma obra selecionada!');
+      return;
+    }
+
+    console.log(`[Financeiro] Inscrevendo para obra ${obraId}`);
+
+    const desinscrever = inscreverFinanceiro(obraId, (dadosFinanceiro) => {
+      console.log('[Financeiro] ✅ Atualizando com dados do backend:', dadosFinanceiro);
+      setTotalGastoBackend(dadosFinanceiro.totalGasto);
+      setTotalCimentoBackend(dadosFinanceiro.totalCimentoComprado);
+    });
+
+    return () => {
+      if (desinscrever) desinscrever();
+    };
+  }, [obraId]);
+
   function abrirModal() {
     setData(new Date());
     setVolume('');
@@ -67,7 +95,7 @@ export default function FinanceiroScreen({ navigation, route }) {
     if (dataSelecionada) setData(dataSelecionada);
   }
 
-  function handleSalvar() {
+  async function handleSalvar() {
     Keyboard.dismiss();
 
     if (!volume || parseFloat(volume) <= 0) {
@@ -77,11 +105,24 @@ export default function FinanceiroScreen({ navigation, route }) {
       return Alert.alert('Campo obrigatório', 'Informe o valor da compra em R$.');
     }
 
+    // Salva localmente (Context) — fonte da verdade da tela
     adicionarCompra(obraId, {
       data: data.toISOString(),
       volume: parseFloat(volume),
       valor: parseFloat(valor),
     });
+
+    // Publica no MQTT — melhor esforco, nao bloqueia o salvamento local
+    try {
+      await publicarFinanceiro({
+        obraId,
+        valorTotal: totalGasto + parseFloat(valor),
+        volumeComprado: totalVolume + parseFloat(volume),
+      });
+      console.log('[Financeiro] Publicado no MQTT');
+    } catch (erro) {
+      console.log('[Financeiro] Erro ao publicar MQTT:', erro.message);
+    }
 
     fecharModal();
   }
@@ -128,13 +169,13 @@ export default function FinanceiroScreen({ navigation, route }) {
           <View style={styles.cardResumo}>
             <Text style={styles.emojiResumo}>💰</Text>
             <Text style={styles.labelResumo}>Total Gasto</Text>
-            <Text style={styles.valorResumo}>R$ {formatarMoeda(totalGasto)}</Text>
+            <Text style={styles.valorResumo}>R$ {formatarMoeda(totalGastoBackend)}</Text>
           </View>
 
           <View style={styles.cardResumo}>
             <Text style={styles.emojiResumo}>📦</Text>
             <Text style={styles.labelResumo}>Cimento Comprado</Text>
-            <Text style={styles.valorResumo}>{formatarMoeda(totalVolume)} m³</Text>
+            <Text style={styles.valorResumo}>{formatarMoeda(totalCimentoBackend)} m³</Text>
           </View>
         </View>
 

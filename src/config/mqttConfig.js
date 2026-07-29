@@ -48,6 +48,15 @@ const mqttConfig = {
   // Formato: { obra_id, temperatura } (campos extras sao ignorados)
   topicoRespostaCaminhao: 'app/enviar_caminhao/resp',
 
+  // Topico onde o app publica uma nova compra de cimento (tela Financeiro)
+  // Formato: { obra_id, valor_total, volume_comprado, data }
+  topicoFinanceiro: 'app/financeiro',
+
+  // Topico onde o backend responde com os dados financeiros atualizados da obra
+  // Formato: { status, mensagem, id_financeiro, id_obra,
+  //   resumo_obra: { total_gasto, total_gasto_cimento, total_cimento_comprado } }
+  topicoRespostaFinanceiro: 'app/financeiro/resp',
+
   // Qualidade de servico — QoS 1 = entrega garantida pelo menos uma vez
   qos: 1,
 };

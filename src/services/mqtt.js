@@ -375,6 +375,195 @@ export function publicarEnvioCaminhao(dados) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// PUBLICAR COMPRA DE CIMENTO (TELA FINANCEIRO)
+// Mesmo padrao autocontido da publicarCadastro/publicarEnvioCaminhao.
+// Cria o proprio cliente, conecta, publica e desconecta.
+// ─────────────────────────────────────────────────────────────
+export function publicarFinanceiro(dados) {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('[MQTT Financeiro] Iniciando conexao...');
+      console.log('[MQTT Financeiro] Dados recebidos:', dados);
+
+      const cliente = new Paho.Client(
+        mqttConfig.host,
+        mqttConfig.porta,
+        '/mqtt',
+        gerarClientId()
+      );
+
+      cliente.onConnectionLost = (resposta) => {
+        if (resposta.errorCode !== 0) {
+          console.warn('[MQTT Financeiro] Conexao perdida:', resposta.errorMessage);
+        }
+      };
+
+      cliente.connect({
+        useSSL: false,
+        cleanSession: true,
+        timeout: 10,
+
+        onSuccess: () => {
+          console.log('[MQTT Financeiro] Conectado ao broker.');
+
+          try {
+            const payload = JSON.stringify({
+              obra_id: dados.obraId,
+              valor_total: parseFloat(dados.valorTotal) || 0,
+              volume_comprado: parseFloat(dados.volumeComprado) || 0,
+              data: new Date().toISOString(),
+            });
+
+            const mensagem = new Paho.Message(payload);
+            mensagem.destinationName = mqttConfig.topicoFinanceiro; // app/financeiro
+            mensagem.qos = mqttConfig.qos;
+            mensagem.retained = false;
+
+            cliente.send(mensagem);
+
+            console.log('[MQTT Financeiro] Publicado no topico', mqttConfig.topicoFinanceiro);
+            console.log('[MQTT Financeiro] Payload:', payload);
+
+            if (cliente.isConnected()) {
+              cliente.disconnect();
+            }
+
+            resolve();
+
+          } catch (erroPublicar) {
+            console.error('[MQTT Financeiro] Erro ao publicar:', erroPublicar.message);
+            if (cliente.isConnected()) cliente.disconnect();
+            reject(erroPublicar);
+          }
+        },
+
+        onFailure: (erro) => {
+          console.error('[MQTT Financeiro] Falha ao conectar:', erro.errorMessage);
+          reject(new Error(erro.errorMessage));
+        },
+      });
+
+    } catch (erro) {
+      console.error('[MQTT Financeiro] Erro ao criar cliente:', erro.message);
+      reject(erro);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// INSCREVER EM DADOS FINANCEIROS EM TEMPO REAL, FILTRADA POR OBRA
+// Mesmo padrao persistente da inscreverTemperatura: conexao fica aberta
+// enquanto a tela estiver montada, recebendo cada resposta via callback.
+// Retorna uma funcao de cleanup (desinscreve + desconecta).
+// Formato da mensagem: { status, mensagem, id_financeiro, id_obra,
+//   resumo_obra: { total_gasto, total_gasto_cimento, total_cimento_comprado } }
+// Usa != (nao !==) porque id_obra pode chegar como number/string e obraId como string.
+// ─────────────────────────────────────────────────────────────
+export function inscreverFinanceiro(obraId, callback) {
+  try {
+    console.log(`[MQTT Financeiro] Iniciando conexao... Filtro obra_id: ${obraId}`);
+
+    const cliente = new Paho.Client(
+      mqttConfig.host,
+      mqttConfig.porta,
+      '/mqtt',
+      gerarClientId()
+    );
+
+    cliente.onConnectionLost = (resposta) => {
+      if (resposta.errorCode !== 0) {
+        console.warn('[MQTT Financeiro] Conexao perdida:', resposta.errorMessage);
+      }
+    };
+
+    cliente.onMessageArrived = (mensagemRecebida) => {
+      if (mensagemRecebida.destinationName !== mqttConfig.topicoRespostaFinanceiro) return;
+
+      let payload;
+      try {
+        payload = JSON.parse(mensagemRecebida.payloadString);
+      } catch (erro) {
+        console.error('[MQTT Financeiro] Erro ao processar JSON:', erro.message);
+        return;
+      }
+
+      console.log('[MQTT Financeiro] Payload completo:', payload);
+
+      if (payload.status !== 'ok') {
+        console.warn('[MQTT Financeiro] Status não ok:', payload);
+        return;
+      }
+
+      const idObra = payload.id_obra;
+      const resumo = payload.resumo_obra;
+
+      if (!resumo) {
+        console.warn('[MQTT Financeiro] Sem resumo_obra');
+        return;
+      }
+
+      if (idObra != obraId) {
+        console.log(`[MQTT Financeiro] Ignorado (obra ${idObra} != ${obraId})`);
+        return;
+      }
+
+      const dadosFinanceiro = {
+        idObra,
+        totalGasto: parseFloat(resumo.total_gasto) || 0,
+        totalGastoCimento: parseFloat(resumo.total_gasto_cimento) || 0,
+        totalCimentoComprado: parseFloat(resumo.total_cimento_comprado) || 0,
+      };
+
+      console.log(`[MQTT Financeiro] Obra ${obraId} recebeu:`, dadosFinanceiro);
+      callback(dadosFinanceiro);
+    };
+
+    cliente.connect({
+      useSSL: false,
+      cleanSession: true,
+      timeout: 10,
+
+      onSuccess: () => {
+        console.log('[MQTT Financeiro] Conectado ao broker.');
+
+        cliente.subscribe(mqttConfig.topicoRespostaFinanceiro, {
+          qos: mqttConfig.qos,
+
+          onSuccess: () => {
+            console.log('[MQTT Financeiro] Inscrito no topico', mqttConfig.topicoRespostaFinanceiro);
+          },
+
+          onFailure: (erro) => {
+            console.error('[MQTT Financeiro] Falha ao se inscrever:', erro.errorMessage);
+          },
+        });
+      },
+
+      onFailure: (erro) => {
+        console.error('[MQTT Financeiro] Falha ao conectar:', erro.errorMessage);
+      },
+    });
+
+    // Funcao de cleanup — desinscreve e desconecta a conexao persistente
+    return () => {
+      try {
+        if (cliente.isConnected()) {
+          cliente.unsubscribe(mqttConfig.topicoRespostaFinanceiro);
+          cliente.disconnect();
+          console.log(`[MQTT Financeiro] Desinscrito e desconectado (obra ${obraId}).`);
+        }
+      } catch (erro) {
+        console.error('[MQTT Financeiro] Erro ao desinscrever:', erro.message);
+      }
+    };
+
+  } catch (erro) {
+    console.error('[MQTT Financeiro] Erro ao criar cliente:', erro.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // INSCREVER EM TEMPERATURA EM TEMPO REAL, FILTRADA POR OBRA
 // Diferente das outras funcoes deste arquivo, esta conexao NAO e efemera:
 // fica aberta enquanto a tela estiver montada, recebendo cada nova leitura

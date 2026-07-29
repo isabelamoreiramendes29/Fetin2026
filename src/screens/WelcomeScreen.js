@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 // Pega a largura da tela para calcular tamanhos proporcionais
 const { width, height } = Dimensions.get('window');
 
-const logoCemtinel = require('../../assets/logo.jpeg');
+const logoCemtinel = require('../../assets/logo.png');
 
 export default function WelcomeScreen({ navigation }) {
   return (
