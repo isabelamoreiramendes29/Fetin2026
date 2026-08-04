@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 
 import { useObras } from '../context/ObrasContext';
+import BotaoSair from '../components/BotaoSair';
 
 export default function SelecionarObraConstrutoraScreen({ navigation }) {
   // Acessa a lista real de obras do contexto global, cadastradas pelo Mestre
@@ -36,16 +37,9 @@ export default function SelecionarObraConstrutoraScreen({ navigation }) {
     >
 
       {/* ── CABECALHO ── */}
+      {/* Sem botao de voltar de proposito — ver nota em SelecionarObraScreen */}
       <View style={styles.cabecalho}>
         <View style={styles.cabecalhoEsquerda}>
-
-          {/* Botao de voltar */}
-          <TouchableOpacity
-            style={styles.botaoVoltar}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
 
           {/* Titulo e linha decorativa */}
           <View>
@@ -54,8 +48,7 @@ export default function SelecionarObraConstrutoraScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Icone de construcao a direita do titulo */}
-        <MaterialCommunityIcons name="wall" size={36} color="rgba(255,255,255,0.7)" />
+        <BotaoSair navigation={navigation} />
       </View>
 
       {/* ── LISTA DE OBRAS ── */}
@@ -123,11 +116,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-
-  // Seta de voltar
-  botaoVoltar: {
-    padding: 4,
   },
 
   // Titulo "Selecionar Obra"

@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import VelocimetroTemperatura from '../components/VelocimetroTemperatura';
 import { inscreverTemperatura } from '../services/mqtt';
+import { salvarLeitura } from '../services/historico';
 
 const { width } = Dimensions.get('window');
 
@@ -93,7 +94,11 @@ export default function TemperaturaScreen({ navigation, route }) {
       console.log(`🌡️🌡️🌡️ [Temperatura] CALLBACK CHAMADO com valor: ${novaTemperatura}`);
       setTemperatura(novaTemperatura);
       setConectado(true);
-      console.log(`✅ [Temperatura] setTemperatura executado`);
+
+      // Grava a leitura para alimentar a tela de Historico. Sem isto o valor
+      // so existiria enquanto esta tela estivesse aberta — MQTT nao guarda nada.
+      // Nao usa await: a exibicao ao vivo nao espera o banco.
+      salvarLeitura(obraId, novaTemperatura);
     });
 
     return () => {

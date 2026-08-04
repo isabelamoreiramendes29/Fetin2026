@@ -17,7 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import InputCampo from '../components/InputCampo';
 import { colors } from '../styles/colors';
-import { publicarLogin } from '../services/mqtt';
+import { fazerLogin } from '../services/supabase';
+import supabaseConfig from '../config/supabaseConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -59,26 +60,36 @@ export default function LoginScreen({ navigation }) {
 
   // ── ACAO DO BOTAO ENTRAR ──
   // 1. Valida formato dos campos
-  // 2. Publica no MQTT e aguarda a validacao do backend (topico app/resp)
-  // 3. Se valido, navega para SelecionarObra (Mestre) ou MenuConstrutora (Construtora)
+  // 2. Autentica no Supabase (o proprio servico confere se o tipo escolhido
+  //    aqui bate com o tipo gravado no perfil da conta)
+  // 3. Se valido, navega para SelecionarObra (Mestre) ou SelecionarObraConstrutora
   async function handleEntrar() {
     if (!validarCampos()) return;
     if (enviando) return;
     setEnviando(true);
 
     try {
-      const resposta = await publicarLogin({ email, senha });
+      const tipoEsperado = tipoUsuario === 'construtora'
+        ? supabaseConfig.TIPO_CONSTRUTORA
+        : supabaseConfig.TIPO_MESTRE;
+
+      const resposta = await fazerLogin({ email, senha, tipoEsperado });
 
       if (!resposta.sucesso) {
         Alert.alert('Erro', resposta.mensagem);
         return;
       }
 
-      if (tipoUsuario === 'construtora') {
-        navigation.navigate('SelecionarObraConstrutora');
-      } else {
-        navigation.navigate('SelecionarObra');
-      }
+      // Navega pelo tipo que veio do perfil, nao pelo botao selecionado —
+      // os dois ja foram conferidos em fazerLogin
+      const telaInicial = resposta.tipo === supabaseConfig.TIPO_CONSTRUTORA
+        ? 'SelecionarObraConstrutora'
+        : 'SelecionarObra';
+
+      // reset, e nao navigate: apaga Welcome/Login/Cadastro da pilha. Sem isso,
+      // o botao voltar do aparelho devolveria o usuario a tela de login com a
+      // sessao ainda aberta. Para encerrar a sessao existe o BotaoSair.
+      navigation.reset({ index: 0, routes: [{ name: telaInicial }] });
 
     } catch (erro) {
       console.error('[Login] Erro:', erro.message);
@@ -159,11 +170,6 @@ export default function LoginScreen({ navigation }) {
             </View>
 
           </View>
-
-          {/* ── LINK ESQUECI MINHA SENHA ── */}
-          <TouchableOpacity style={styles.linkEsqueci} onPress={() => {}}>
-            <Text style={styles.textoEsqueci}>Esqueci minha senha</Text>
-          </TouchableOpacity>
 
           {/* ── SELETOR: TIPO DE USUARIO ── */}
           <View style={styles.tipoUsuarioContainer}>
@@ -266,7 +272,8 @@ const styles = StyleSheet.create({
   formulario: {
     width: '100%',
     gap: 14,
-    marginBottom: 12,
+    // Compensa o espaco que o link "Esqueci minha senha" ocupava aqui
+    marginBottom: 28,
   },
   campoContainer: {
     flexDirection: 'row',
@@ -296,14 +303,6 @@ const styles = StyleSheet.create({
   },
   iconeOlho: {
     marginLeft: 8,
-  },
-  linkEsqueci: {
-    alignSelf: 'flex-end',
-    marginBottom: 24,
-  },
-  textoEsqueci: {
-    color: '#2ECC40',
-    fontSize: 13,
   },
   tipoUsuarioContainer: {
     width: '100%',

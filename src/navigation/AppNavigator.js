@@ -14,7 +14,7 @@ import CadastroObraScreen from '../screens/CadastroObraScreen';
 import SelecionarObraConstrutoraScreen from '../screens/SelecionarObraConstrutoraScreen';
 
 // ── MENU DO MESTRE DE OBRA ──
-// Substitui o antigo HomeObraScreen (placeholder). Renomeada de MenuObraScreen.
+// Renomeada de MenuObraScreen.
 import MenuMestreScreen from '../screens/MenuMestreScreen';
 
 // ── TELAS DO MENU DO MESTRE ──

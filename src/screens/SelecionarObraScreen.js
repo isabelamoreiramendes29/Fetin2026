@@ -8,16 +8,15 @@ import {
   FlatList,
   StyleSheet,
   Dimensions,
-  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 
 // Hook do contexto global de obras
 import { useObras } from '../context/ObrasContext';
 
 // Componente reutilizavel de card
 import CardObra from '../components/CardObra';
+import BotaoSair from '../components/BotaoSair';
 
 const { width } = Dimensions.get('window');
 
@@ -50,16 +49,11 @@ export default function SelecionarObraScreen({ navigation }) {
     >
 
       {/* ── CABECALHO ── */}
+      {/* Sem botao de voltar de proposito: esta e a primeira tela depois do
+          login, e voltar levaria de volta ao Login com a sessao ainda aberta.
+          Para encerrar a sessao existe o botao de sair, a direita. */}
       <View style={styles.cabecalho}>
         <View style={styles.cabecalhoEsquerda}>
-
-          {/* Botao de voltar */}
-          <TouchableOpacity
-            style={styles.botaoVoltar}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
 
           {/* Titulo e linha decorativa */}
           <View>
@@ -68,8 +62,7 @@ export default function SelecionarObraScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Icone de construcao a direita do titulo */}
-        <MaterialCommunityIcons name="wall" size={36} color="rgba(255,255,255,0.7)" />
+        <BotaoSair navigation={navigation} />
       </View>
 
       {/* ── LISTA DE OBRAS ── */}
@@ -107,16 +100,11 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
 
-  // Lado esquerdo do cabecalho (botao voltar + titulo)
+  // Lado esquerdo do cabecalho (titulo)
   cabecalhoEsquerda: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-
-  // Seta de voltar
-  botaoVoltar: {
-    padding: 4,
   },
 
   // Titulo "Selecionar Obra"

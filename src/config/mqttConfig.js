@@ -8,33 +8,13 @@ const mqttConfig = {
   // Porta WebSocket do Mosquitto (obrigatoria para Expo Go / React Native)
   porta: 9001,
 
-  // URL completa para conexao via WebSocket
-  url: 'ws://192.168.66.68:9001/mqtt',
-
-  // Topico onde os cadastros de usuario sao publicados
-  topicoCadastro: 'app/cad',
-
-  // Topico onde os dados de login sao publicados
-  topicoLogin: 'app/log',
-
-  // Topico onde o backend publica a resposta da validacao do login
-  // 0 = login/senha invalidos | diferente de 0 = login valido
-  topicoResposta: 'app/resp',
+  // Nota: os topicos de login (app/log), cadastro (app/cad), resposta de login
+  // (app/resp) e verificacao de e-mail (app/verifica_email, app/resp_email)
+  // sairam daqui — usuario agora e autenticado pelo Supabase.
+  // O backend ainda escuta esses topicos, mas o app nao publica mais neles.
 
   // Topico onde os cadastros de obra sao publicados
   topicoCadastroObra: 'app/obra',
-
-  // Topico para perguntar ao backend se um e-mail ja esta cadastrado
-  // Envia: { email, tipo_esperado }  (tipo_esperado: 0 = mestre, 1 = construtora)
-  topicoVerificarEmail: 'app/verifica_email',
-
-  // Topico onde o backend responde a verificacao de e-mail
-  // Responde: { email, existe, tipo }  (existe: 1 = existe, 0 = nao existe)
-  topicoRespostaEmail: 'app/resp_email',
-
-  // Topico onde o sensor publica a temperatura atual do cimento
-  // Formato: apenas o numero, sem JSON (ex: "75.5")
-  topicoTemperatura: 'app/temperatura',
 
   // Topico onde o backend publica a lista completa de obras
   // Formato: array JSON de obras (ver inscreverListaObras em services/mqtt.js)

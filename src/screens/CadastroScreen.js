@@ -18,7 +18,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
-import { publicarCadastro } from '../services/mqtt';
+import { fazerCadastro } from '../services/supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -70,7 +70,7 @@ export default function CadastroScreen({ navigation }) {
 
   // ── ACAO DO BOTAO DE CADASTRAR ──
   // 1. Valida os campos
-  // 2. Publica no MQTT
+  // 2. Cria a conta no Supabase (a tabela perfis e preenchida por trigger)
   // 3. Navega para Login
   async function handleCadastro() {
     if (!validarCampos()) return;
@@ -78,11 +78,22 @@ export default function CadastroScreen({ navigation }) {
     setEnviando(true);
 
     try {
-      await publicarCadastro({ nome, email, telefone, senha, tipo: tipoUsuario });
+      const resposta = await fazerCadastro({ nome, email, telefone, senha, tipo: tipoUsuario });
+
+      if (!resposta.sucesso) {
+        Alert.alert('Erro', resposta.mensagem);
+        return;
+      }
+
+      // Se a confirmacao de e-mail estiver ligada no painel do Supabase,
+      // o login so funciona depois que o usuario clicar no link recebido
+      const mensagem = resposta.precisaConfirmarEmail
+        ? 'Conta criada! Confirme seu e-mail pelo link que enviamos e depois faca o login.'
+        : 'Cadastro realizado com sucesso! Faca o login para entrar.';
 
       Alert.alert(
         'Sucesso',
-        'Cadastro enviado com sucesso! Faca o login para entrar.',
+        mensagem,
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
 

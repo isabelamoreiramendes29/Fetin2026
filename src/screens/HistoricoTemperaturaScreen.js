@@ -1,9 +1,9 @@
 // Tela Historico de Temperaturas — exibe grafico e tabela de medicoes
 // Fluxo: MenuObra → HistoricoTemperatura (esta tela)
-// Todos os dados sao FICTICIOS para apresentacao (sensor ainda nao integrado)
+// Le as leituras reais gravadas na tabela leituras_temperatura (ver services/historico.js)
 // Recebe obraId e obraNome via route.params
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,37 +11,16 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import GraficoHistorico from '../components/GraficoHistorico';
+import { buscarHistoricoTemperatura } from '../services/historico';
 
 const { width } = Dimensions.get('window');
-
-// ─────────────────────────────────────────────────────────────
-// GERACAO DE DADOS FICTICIOS
-// Gera 11 medicoes — apenas horario comercial: 08:00 a 18:00
-// A cada clique em "Atualizar", os dados sao regenerados com novos valores
-// ─────────────────────────────────────────────────────────────
-const gerarDadosFicticios = () => {
-  const dados = [];
-  let tempAtual = 75; // temperatura inicial
-
-  for (let hora = 8; hora <= 18; hora++) {
-    // Variacao suave entre -2.5 e +2.5 graus por hora
-    const variacao = (Math.random() - 0.5) * 5;
-    tempAtual = Math.max(60, Math.min(90, tempAtual + variacao));
-
-    dados.push({
-      hora: `${String(hora).padStart(2, '0')}:00`,
-      temp: Math.round(tempAtual * 10) / 10,
-    });
-  }
-
-  return dados;
-};
 
 // ─────────────────────────────────────────────────────────────
 // STATUS BASEADO NA TEMPERATURA
@@ -66,30 +45,60 @@ const formatarData = (date) => {
 export default function HistoricoTemperaturaScreen({ navigation, route }) {
   const { obraId, obraNome } = route.params;
 
-  // Chave que, ao mudar, forca o useMemo a regenerar os dados
-  const [chaveAtualizar, setChaveAtualizar] = useState(0);
+  const [dados, setDados]         = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro]           = useState(null);
 
-  // Dados gerados apenas quando chaveAtualizar muda
-  const dados = useMemo(() => gerarDadosFicticios(), [chaveAtualizar]);
+  // Busca as leituras da obra — usada ao abrir a tela e no botao Atualizar
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
+
+    try {
+      setDados(await buscarHistoricoTemperatura(obraId));
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [obraId]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
 
   // ── DERIVADOS DOS DADOS ──
-  const ultimaMedicao = dados[dados.length - 1]; // medicao das 18:00
-  const statusUltima  = getStatus(ultimaMedicao.temp);
+  // Tudo protegido contra lista vazia: obra que ainda nao recebeu leitura
+  // e situacao normal, nao erro
+  const temDados = dados.length > 0;
 
-  const minDia   = Math.min(...dados.map((d) => d.temp));
-  const maxDia   = Math.max(...dados.map((d) => d.temp));
-  const mediaDia = parseFloat(
-    (dados.reduce((soma, d) => soma + d.temp, 0) / dados.length).toFixed(1)
-  );
+  const ultimaMedicao = temDados ? dados[dados.length - 1] : null;
+  const statusUltima  = ultimaMedicao ? getStatus(ultimaMedicao.temp) : null;
+
+  const miniStats = temDados
+    ? [
+        {
+          label: 'MÍNIMA',
+          valor: Math.min(...dados.map((d) => d.temp)).toFixed(1),
+          cor: '#3B82F6',
+          icone: 'arrow-down-outline',
+        },
+        {
+          label: 'MÁXIMA',
+          valor: Math.max(...dados.map((d) => d.temp)).toFixed(1),
+          cor: '#EF4444',
+          icone: 'arrow-up-outline',
+        },
+        {
+          label: 'MÉDIA',
+          valor: (dados.reduce((soma, d) => soma + d.temp, 0) / dados.length).toFixed(1),
+          cor: '#22C55E',
+          icone: 'analytics-outline',
+        },
+      ]
+    : [];
 
   const hoje = new Date();
-
-  // Mini-stats para os 3 cards laterais
-  const miniStats = [
-    { label: 'MÍNIMA', valor: minDia.toFixed(1),    cor: '#3B82F6', icone: 'arrow-down-outline' },
-    { label: 'MÁXIMA', valor: maxDia.toFixed(1),    cor: '#EF4444', icone: 'arrow-up-outline'   },
-    { label: 'MÉDIA',  valor: mediaDia.toFixed(1),  cor: '#22C55E', icone: 'analytics-outline'  },
-  ];
 
   return (
     <LinearGradient
@@ -129,6 +138,43 @@ export default function HistoricoTemperaturaScreen({ navigation, route }) {
 
         {/* ── NOME DA OBRA ── */}
         <Text style={styles.nomeObra}>{obraNome}</Text>
+
+        {/* ── ESTADO: CARREGANDO ── */}
+        {carregando && (
+          <View style={styles.estadoVazio}>
+            <ActivityIndicator size="large" color="#22C55E" />
+            <Text style={styles.estadoVazioTexto}>Carregando leituras...</Text>
+          </View>
+        )}
+
+        {/* ── ESTADO: FALHA AO BUSCAR ── */}
+        {!carregando && erro && (
+          <View style={styles.estadoVazio}>
+            <Ionicons name="cloud-offline-outline" size={44} color="rgba(255,255,255,0.35)" />
+            <Text style={styles.estadoVazioTitulo}>Não foi possível carregar</Text>
+            <Text style={styles.estadoVazioTexto}>{erro}</Text>
+          </View>
+        )}
+
+        {/* ── ESTADO: OBRA AINDA SEM LEITURA ── */}
+        {/* Nao e erro: e obra nova, ou sensor que ainda nao publicou nada */}
+        {!carregando && !erro && !temDados && (
+          <View style={styles.estadoVazio}>
+            <MaterialCommunityIcons
+              name="thermometer-off"
+              size={44}
+              color="rgba(255,255,255,0.35)"
+            />
+            <Text style={styles.estadoVazioTitulo}>Nenhuma leitura registrada</Text>
+            <Text style={styles.estadoVazioTexto}>
+              As medições desta obra aparecem aqui assim que o sensor começar a enviar dados.
+            </Text>
+          </View>
+        )}
+
+        {/* ── CONTEUDO, QUANDO HA LEITURAS ── */}
+        {!carregando && !erro && temDados && (
+        <>
 
         {/* ── ROW: ULTIMA MEDICAO + MINI STATS ── */}
         <View style={styles.rowUltimaStats}>
@@ -209,20 +255,22 @@ export default function HistoricoTemperaturaScreen({ navigation, route }) {
 
         </View>
 
+        </>
+        )}
+
         {/* ── BOTAO ATUALIZAR DADOS ── */}
-        {/* Ao clicar: regenera todos os dados, simulando uma nova busca ao sensor */}
+        {/* Busca de novo no banco — util para ver leituras que chegaram
+            enquanto esta tela estava aberta */}
         <TouchableOpacity
           style={styles.botaoAtualizar}
-          onPress={() => setChaveAtualizar((c) => c + 1)}
+          onPress={carregar}
           activeOpacity={0.8}
+          disabled={carregando}
         >
-          <Text style={styles.botaoAtualizarTexto}>🔄  Atualizar dados</Text>
+          <Text style={styles.botaoAtualizarTexto}>
+            {carregando ? '⏳  Carregando...' : '🔄  Atualizar dados'}
+          </Text>
         </TouchableOpacity>
-
-        {/* Nota de demonstracao */}
-        <Text style={styles.notaDemonstracao}>
-          * Dados de demonstração — sensor em integração
-        </Text>
 
       </ScrollView>
     </LinearGradient>
@@ -384,10 +432,22 @@ const styles = StyleSheet.create({
     color: '#22C55E', fontSize: 14, fontWeight: 'bold', letterSpacing: 0.5,
   },
 
+  // ── ESTADOS SEM GRAFICO (carregando / erro / sem leitura) ──
+  // Ocupam o lugar dos cards, mantendo o cabecalho e o botao Atualizar visiveis
+  estadoVazio: {
+    marginHorizontal: 16,
+    marginBottom: 20,
+    paddingVertical: 48, paddingHorizontal: 24,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-  notaDemonstracao: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 11, textAlign: 'center',
-    fontStyle: 'italic', marginBottom: 4,
+  estadoVazioTitulo: {
+    color: '#fff', fontSize: 15, fontWeight: 'bold',
+    textAlign: 'center', marginTop: 14, marginBottom: 6,
+  },
+
+  estadoVazioTexto: {
+    color: 'rgba(255,255,255,0.5)', fontSize: 13,
+    textAlign: 'center', lineHeight: 19, marginTop: 10,
   },
 });

@@ -56,9 +56,12 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
     },
   ];
 
-  // Navega para a tela do item clicado
+  // Navega para a tela do item clicado, sempre passando obraId e obraNome —
+  // igual ao MenuMestre. As telas da Construtora ainda nao leem esses dados,
+  // mas Monitorar Temperatura vai precisar do obraId para filtrar as leituras
+  // da obra certa (ver inscreverTemperatura em services/mqtt.js).
   function handleNavegar(tela) {
-    navigation.navigate(tela);
+    navigation.navigate(tela, { obraId, obraNome });
   }
 
   return (

@@ -40,12 +40,20 @@ const CHART_CONFIG = {
   yAxisSuffix: '°',
 };
 
+// Quantidade maxima de rotulos no eixo X sem que eles se sobreponham
+const MAX_ROTULOS = 6;
+
 export default function GraficoHistorico({ dados }) {
   if (!dados || dados.length === 0) return null;
 
+  // Mostra no maximo MAX_ROTULOS rotulos, independente de quantos pontos
+  // existam: o numero de leituras varia conforme o sensor e o agrupamento
+  // (ver agruparLeituras em services/historico.js)
+  const passoRotulo = Math.ceil(dados.length / MAX_ROTULOS);
+
   // Estrutura de dados: dataset unico com todas as temperaturas
   const data = {
-    labels: dados.map((d, i) => (i % 2 === 0 ? d.hora : '')), // a cada 2h: 08, 10, 12, 14, 16, 18
+    labels: dados.map((d, i) => (i % passoRotulo === 0 ? d.hora : '')),
     datasets: [
       {
         data: dados.map((d) => d.temp),
