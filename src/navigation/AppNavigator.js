@@ -32,6 +32,11 @@ import RastrearCaminhoesScreen from '../screens/RastrearCaminhoesScreen';
 import HistoricoEntregasScreen from '../screens/HistoricoEntregasScreen';
 import MonitorarTemperaturaScreen from '../screens/MonitorarTemperaturaScreen';
 
+// ── MAPA DE CONCRETAGEM ──
+// Compartilhada pelos dois perfis: a Construtora edita, o Mestre so consulta.
+// Quem define isso e o parametro somenteLeitura, enviado pelo menu de origem.
+import MapaConcretagemScreen from '../screens/MapaConcretagemScreen';
+
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
@@ -73,6 +78,9 @@ export default function AppNavigator() {
         <Stack.Screen name="RastrearCaminhoes"     component={RastrearCaminhoesScreen} />
         <Stack.Screen name="HistoricoEntregas"     component={HistoricoEntregasScreen} />
         <Stack.Screen name="MonitorarTemperatura"  component={MonitorarTemperaturaScreen} />
+
+        {/* ── MAPA DE CONCRETAGEM (Construtora edita, Mestre consulta) ── */}
+        <Stack.Screen name="MapaConcretagem" component={MapaConcretagemScreen} />
 
       </Stack.Navigator>
     </NavigationContainer>

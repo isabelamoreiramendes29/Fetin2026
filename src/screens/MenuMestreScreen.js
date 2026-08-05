@@ -55,11 +55,22 @@ export default function MenuMestreScreen({ navigation, route }) {
       texto: 'Localização',
       tela: 'Localizacao',
     },
+    {
+      id: 'mapa-concretagem',
+      icone: 'map-marker-radius',
+      tipoIcone: 'MaterialCommunityIcons',
+      texto: 'Mapa de concretagem',
+      tela: 'MapaConcretagem',
+      // So consulta: quem cadastra a planta, marca as areas e lanca o
+      // resultado do laboratorio e a construtora, nao o mestre
+      params: { somenteLeitura: true },
+    },
   ];
 
-  // Navega para a tela do item clicado, sempre passando obraId e obraNome
-  function handleNavegar(tela) {
-    navigation.navigate(tela, { obraId, obraNome });
+  // Navega para a tela do item clicado, sempre passando obraId e obraNome.
+  // params permite que um item leve dados extras (ver mapa-concretagem).
+  function handleNavegar(tela, params) {
+    navigation.navigate(tela, { obraId, obraNome, ...params });
   }
 
   return (
@@ -119,7 +130,7 @@ export default function MenuMestreScreen({ navigation, route }) {
               icone={item.icone}
               tipoIcone={item.tipoIcone}
               texto={item.texto}
-              onPress={() => handleNavegar(item.tela)}
+              onPress={() => handleNavegar(item.tela, item.params)}
             />
           ))}
         </View>

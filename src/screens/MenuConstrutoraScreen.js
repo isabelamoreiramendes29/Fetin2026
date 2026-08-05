@@ -54,6 +54,13 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
       texto: 'Monitorar Temperatura',
       tela: 'MonitorarTemperatura',
     },
+    {
+      id: 'mapa-concretagem',
+      icone: 'map-marker-radius',
+      tipoIcone: 'MaterialCommunityIcons',
+      texto: 'Mapa de Concretagem',
+      tela: 'MapaConcretagem',
+    },
   ];
 
   // Navega para a tela do item clicado, sempre passando obraId e obraNome —

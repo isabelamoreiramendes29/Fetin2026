@@ -83,6 +83,17 @@ create table if not exists public.regioes_concretagem (
   criado_em       timestamptz not null default now()
 );
 
+-- Registro de reforco estrutural, para areas que reprovaram no ensaio.
+-- Fica em alter (e nao nas colunas acima) para que rodar este arquivo de novo
+-- adicione as colunas em bancos que ja tinham a tabela criada antes.
+--
+-- Por que reforco nao vira "aprovado": uma area que reprovou e foi reforcada
+-- nao e igual a uma que passou de primeira. Apagar essa diferenca destruiria
+-- justamente o rastro que este mapa existe para guardar.
+alter table public.regioes_concretagem
+  add column if not exists reforco_descricao text,
+  add column if not exists data_reforco       timestamptz;
+
 create index if not exists regioes_por_planta
   on public.regioes_concretagem (id_planta);
 
