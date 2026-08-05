@@ -28,7 +28,6 @@ import MenuConstrutoraScreen from '../screens/MenuConstrutoraScreen';
 
 // ── TELAS DO MENU DA CONSTRUTORA (placeholders) ──
 import EnviarCaminhaoScreen from '../screens/EnviarCaminhaoScreen';
-import RastrearCaminhoesScreen from '../screens/RastrearCaminhoesScreen';
 import HistoricoEntregasScreen from '../screens/HistoricoEntregasScreen';
 import MonitorarTemperaturaScreen from '../screens/MonitorarTemperaturaScreen';
 
@@ -65,6 +64,9 @@ export default function AppNavigator() {
         <Stack.Screen name="Temperatura"          component={TemperaturaScreen} />
         <Stack.Screen name="HistoricoTemperatura" component={HistoricoTemperaturaScreen} />
         <Stack.Screen name="Financeiro"           component={FinanceiroScreen} />
+
+        {/* Rastreamento do caminhao — compartilhada: a construtora controla a
+            viagem, o mestre acompanha via somenteLeitura */}
         <Stack.Screen name="Localizacao"          component={LocalizacaoScreen} />
 
         {/* ── SELECAO DE OBRA DA CONSTRUTORA ── */}
@@ -75,7 +77,6 @@ export default function AppNavigator() {
 
         {/* ── TELAS DO MENU DA CONSTRUTORA (placeholders) ── */}
         <Stack.Screen name="EnviarCaminhao"        component={EnviarCaminhaoScreen} />
-        <Stack.Screen name="RastrearCaminhoes"     component={RastrearCaminhoesScreen} />
         <Stack.Screen name="HistoricoEntregas"     component={HistoricoEntregasScreen} />
         <Stack.Screen name="MonitorarTemperatura"  component={MonitorarTemperaturaScreen} />
 

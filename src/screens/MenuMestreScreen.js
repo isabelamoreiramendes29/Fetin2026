@@ -54,6 +54,9 @@ export default function MenuMestreScreen({ navigation, route }) {
       tipoIcone: 'Ionicons',
       texto: 'Localização',
       tela: 'Localizacao',
+      // So acompanha: a betoneira e da construtora, e e ela quem controla
+      // a viagem. O mestre le a posicao publicada por ela.
+      params: { somenteLeitura: true },
     },
     {
       id: 'mapa-concretagem',

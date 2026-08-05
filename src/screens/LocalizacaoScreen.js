@@ -1,10 +1,18 @@
-// Tela GPS / Localização — mapa ilustrativo com caminhão animado
-// Fluxo: MenuObra → Localizacao (esta tela)
-// Sem comunicação real — LoRa em integração
-// Caminhão se move ao longo de uma rota simulada via react-native-svg
-// Recebe obraNome via route.params
+// Tela de rastreamento do caminhao — mapa real com a rota
+// Recebe obraId, obraNome e somenteLeitura via route.params
+//
+// Quem faz o que: a betoneira e da construtora, entao e ela quem inicia,
+// pausa e reinicia a viagem. O mestre, no canteiro, apenas acompanha —
+// entra com somenteLeitura e recebe a posicao consultando o banco.
+//
+// Por que a posicao vai para o banco e nao fica na tela: sao aparelhos
+// diferentes. E o mesmo desenho que o GPS real vai usar — o caminhao publica
+// onde esta, quem acompanha le dali (ver services/rastreamento.js).
+//
+// O que ainda e simulado e o avanco em si: o modulo GPS/LoRa nao publica
+// coordenadas ainda. Quando publicar, ele passa a alimentar a mesma tabela.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,57 +23,43 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, {
-  Rect,
-  Circle,
-  Path,
-  Line,
-  G,
-  Text as SvgText,
-} from 'react-native-svg';
 import { colors } from '../styles/colors';
+import MapaRota, { comprimentoRota } from '../components/MapaRota';
+import { publicarPosicao, buscarPosicao } from '../services/rastreamento';
+
+// De quanto em quanto tempo o mestre reconsulta a posicao do caminhao
+const INTERVALO_CONSULTA_MS = 3000;
+
+// Passo da simulacao no modo da construtora
+const PASSO_MS = 500;
+const PASSO_PCT = 2;
 
 const { width } = Dimensions.get('window');
 
 // ─────────────────────────────────────────────────────────────
-// ROTA — 6 pontos no espaço SVG (ViewBox 350×280)
-// Usados tanto para o desenho do path quanto para mover o caminhão
+// ROTA — coordenadas reais em Sao Paulo
+// Da regiao da Barra Funda ate a Av. Paulista, que e o endereco da Obra 1
+// em obrasIniciais (ObrasContext).
+//
+// Fixa por enquanto: quando as obras vierem do banco com endereco real, esta
+// rota passa a ser derivada dele em vez de escrita aqui.
 // ─────────────────────────────────────────────────────────────
-const ROTA_PONTOS = [
-  { x: 60,  y: 35  },  // 0%   — Depósito
-  { x: 95,  y: 80  },  // 20%
-  { x: 155, y: 115 },  // 40%
-  { x: 205, y: 158 },  // 60%
-  { x: 255, y: 200 },  // 80%
-  { x: 295, y: 248 },  // 100% — Obra
+const ROTA = [
+  { latitude: -23.5230, longitude: -46.6690 }, // Depósito
+  { latitude: -23.5310, longitude: -46.6655 },
+  { latitude: -23.5400, longitude: -46.6600 },
+  { latitude: -23.5490, longitude: -46.6560 },
+  { latitude: -23.5570, longitude: -46.6540 },
+  { latitude: -23.5629, longitude: -46.6544 }, // Obra — Av. Paulista
 ];
 
-// Path bezier suave que passa pelos ROTA_PONTOS
-const ROTA_PATH =
-  'M 60 35 C 75 55, 85 70, 95 80 S 130 100, 155 115 ' +
-  'S 190 145, 205 158 S 250 190, 255 200 S 285 235, 295 248';
+// Distancia real da rota, calculada por haversine. Antes era um 12,5 km
+// inventado que nao correspondia a distancia nenhuma.
+const DISTANCIA_TOTAL = comprimentoRota(ROTA);
 
-const SVG_W          = 350;
-const SVG_H          = 280;
-const DISTANCIA_TOTAL = 12.5; // km fictício
-const TEMPO_TOTAL     = 25;   // min fictício
-
-// ─────────────────────────────────────────────────────────────
-// Interpola a posição XY do caminhão ao longo de ROTA_PONTOS
-// pct: 0 a 100
-// ─────────────────────────────────────────────────────────────
-function calcularPosicaoTruck(pct) {
-  const t   = pct / 100;
-  const n   = ROTA_PONTOS.length - 1;
-  const idx = Math.min(Math.floor(t * n), n - 1);
-  const f   = t * n - idx;
-  const p1  = ROTA_PONTOS[idx];
-  const p2  = ROTA_PONTOS[Math.min(idx + 1, n)];
-  return {
-    x: p1.x + (p2.x - p1.x) * f,
-    y: p1.y + (p2.y - p1.y) * f,
-  };
-}
+// Velocidade media estimada em transito urbano, usada para o ETA
+const VELOCIDADE_MEDIA_KMH = 25;
+const TEMPO_TOTAL = (DISTANCIA_TOTAL / VELOCIDADE_MEDIA_KMH) * 60; // minutos
 
 // Status textual + cor + ícone conforme posição do caminhão
 function getStatus(pos) {
@@ -76,30 +70,73 @@ function getStatus(pos) {
 
 // ── COMPONENTE PRINCIPAL ──
 export default function LocalizacaoScreen({ navigation, route }) {
-  const { obraNome = 'Obra 1' } = route.params || {};
+  const { obraId, obraNome = 'Obra 1', somenteLeitura = false } = route.params || {};
 
   const [posicaoCaminhao,    setPosicaoCaminhao]    = useState(0);
   const [simulandoMovimento, setSimulandoMovimento] = useState(false);
 
-  // Avança 2% a cada 500ms enquanto simulandoMovimento = true
+  // So publica depois da carga inicial. Sem isso, o primeiro render (com
+  // progresso 0) sobrescreveria no banco a posicao real do caminhao.
+  const jaCarregou = useRef(false);
+
+  // ── CARGA INICIAL: onde o caminhao estava quando a tela abriu ──
   useEffect(() => {
-    if (!simulandoMovimento) return;
+    if (!obraId) return;
+    let cancelado = false;
 
-    const interval = setInterval(() => {
-      setPosicaoCaminhao((pos) => {
-        if (pos >= 100) {
-          setSimulandoMovimento(false);
-          return 100;
-        }
-        return pos + 2;
-      });
-    }, 500);
+    buscarPosicao(obraId)
+      .then(({ progresso, emMovimento }) => {
+        if (cancelado) return;
+        setPosicaoCaminhao(progresso);
+        if (!somenteLeitura) setSimulandoMovimento(emMovimento);
+        jaCarregou.current = true;
+      })
+      .catch((falha) => console.warn('[Localizacao]', falha.message));
 
-    return () => clearInterval(interval);
-  }, [simulandoMovimento]);
+    return () => { cancelado = true; };
+  }, [obraId, somenteLeitura]);
+
+  // ── MODO CONSULTA (mestre): reconsulta o banco periodicamente ──
+  useEffect(() => {
+    if (!somenteLeitura || !obraId) return;
+
+    const intervalo = setInterval(async () => {
+      try {
+        const { progresso, emMovimento } = await buscarPosicao(obraId);
+        setPosicaoCaminhao(progresso);
+        setSimulandoMovimento(emMovimento);
+      } catch (falha) {
+        console.warn('[Localizacao] Falha ao atualizar:', falha.message);
+      }
+    }, INTERVALO_CONSULTA_MS);
+
+    return () => clearInterval(intervalo);
+  }, [somenteLeitura, obraId]);
+
+  // ── MODO CONTROLE (construtora): avanca a simulacao ──
+  useEffect(() => {
+    if (somenteLeitura || !simulandoMovimento) return;
+
+    const intervalo = setInterval(() => {
+      setPosicaoCaminhao((pos) => Math.min(pos + PASSO_PCT, 100));
+    }, PASSO_MS);
+
+    return () => clearInterval(intervalo);
+  }, [somenteLeitura, simulandoMovimento]);
+
+  // Para sozinho ao chegar no destino
+  useEffect(() => {
+    if (somenteLeitura) return;
+    if (posicaoCaminhao >= 100 && simulandoMovimento) setSimulandoMovimento(false);
+  }, [posicaoCaminhao, simulandoMovimento, somenteLeitura]);
+
+  // ── PUBLICA CADA MUDANCA, para o mestre enxergar ──
+  useEffect(() => {
+    if (somenteLeitura || !obraId || !jaCarregou.current) return;
+    publicarPosicao(obraId, posicaoCaminhao, simulandoMovimento);
+  }, [posicaoCaminhao, simulandoMovimento, somenteLeitura, obraId]);
 
   // ── DERIVADOS ──
-  const posicaoTruck      = calcularPosicaoTruck(posicaoCaminhao);
   const status            = getStatus(posicaoCaminhao);
   const distanciaRestante = (DISTANCIA_TOTAL * (100 - posicaoCaminhao) / 100).toFixed(1);
   const tempoRestante     = Math.round(TEMPO_TOTAL * (100 - posicaoCaminhao) / 100);
@@ -139,7 +176,7 @@ export default function LocalizacaoScreen({ navigation, route }) {
 
           {/* Título + linha decorativa */}
           <View style={styles.tituloContainer}>
-            <Text style={styles.titulo}>GPS</Text>
+            <Text style={styles.titulo}>{somenteLeitura ? 'GPS' : 'Rastrear'}</Text>
             <View style={styles.linhaDecorada} />
           </View>
 
@@ -153,142 +190,15 @@ export default function LocalizacaoScreen({ navigation, route }) {
         {/* Nome da obra */}
         <Text style={styles.nomeObra}>{obraNome}</Text>
 
-        {/* ── CARD MAPA SVG ── */}
+        {/* ── MAPA ── */}
         <View style={[styles.card, styles.cardMapa]}>
-
-          <Svg
-            width="100%"
-            height={SVG_H}
-            viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          >
-            {/* ── FUNDO DO MAPA ── */}
-            <Rect x="0" y="0" width={SVG_W} height={SVG_H} fill="#0D2137" rx="10" />
-
-            {/* ── BLOCOS DE QUADRA (cidade estilizada) ── */}
-            <Rect x="15" y="10" width="45" height="30" rx="3" fill="#112845" />
-            <Rect x="15" y="55" width="30" height="40" rx="3" fill="#112845" />
-            <Rect x="105" y="45" width="35" height="25" rx="3" fill="#112845" />
-            <Rect x="170" y="90" width="40" height="30" rx="3" fill="#112845" />
-            <Rect x="230" y="130" width="35" height="30" rx="3" fill="#112845" />
-            <Rect x="280" y="170" width="30" height="25" rx="3" fill="#112845" />
-            <Rect x="75"  y="130" width="40" height="35" rx="3" fill="#112845" />
-            <Rect x="130" y="175" width="45" height="30" rx="3" fill="#112845" />
-            <Rect x="30"  y="180" width="40" height="30" rx="3" fill="#112845" />
-            <Rect x="200" y="210" width="35" height="25" rx="3" fill="#112845" />
-            <Rect x="310" y="90"  width="30" height="35" rx="3" fill="#112845" />
-            <Rect x="310" y="210" width="30" height="35" rx="3" fill="#112845" />
-
-            {/* ── RUAS HORIZONTAIS ── */}
-            <Line x1="0" y1="100" x2={SVG_W} y2="100" stroke="#1A3A5C" strokeWidth="7" />
-            <Line x1="0" y1="170" x2={SVG_W} y2="170" stroke="#1A3A5C" strokeWidth="6" />
-            <Line x1="0" y1="230" x2={SVG_W} y2="230" stroke="#1A3A5C" strokeWidth="5" />
-
-            {/* ── RUAS VERTICAIS ── */}
-            <Line x1="70"  y1="0" x2="70"  y2={SVG_H} stroke="#1A3A5C" strokeWidth="5" />
-            <Line x1="160" y1="0" x2="160" y2={SVG_H} stroke="#1A3A5C" strokeWidth="5" />
-            <Line x1="250" y1="0" x2="250" y2={SVG_H} stroke="#1A3A5C" strokeWidth="5" />
-
-            {/* ── ROTA — glow suave ── */}
-            <Path
-              d={ROTA_PATH}
-              stroke="rgba(34, 197, 94, 0.18)"
-              strokeWidth="12"
-              fill="none"
-              strokeLinecap="round"
-            />
-
-            {/* ── ROTA — linha principal verde ── */}
-            <Path
-              d={ROTA_PATH}
-              stroke="#22C55E"
-              strokeWidth="4"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-
-            {/* ── WAYPOINTS intermediários ── */}
-            {ROTA_PONTOS.slice(1, 5).map((pt, i) => (
-              <Circle
-                key={i}
-                cx={pt.x}
-                cy={pt.y}
-                r="5"
-                fill="#1E3A5C"
-                stroke="#2D5A7A"
-                strokeWidth="1.5"
-              />
-            ))}
-
-            {/* ── PONTO ORIGEM (azul) ── */}
-            <Circle cx="60" cy="35" r="12" fill="#1D4ED8" stroke="#fff" strokeWidth="2" />
-            <Circle cx="60" cy="35" r="5"  fill="#fff" />
-
-            {/* ── PONTO DESTINO (verde) ── */}
-            <Circle cx="295" cy="248" r="12" fill="#16A34A" stroke="#fff" strokeWidth="2" />
-            <Circle cx="295" cy="248" r="5"  fill="#fff" />
-
-            {/* ── LABEL ORIGEM ── */}
-            <Rect x="6" y="12" width="48" height="16" rx="4" fill="rgba(29,78,216,0.9)" />
-            <SvgText
-              x="30" y="23"
-              textAnchor="middle"
-              fill="#fff"
-              fontSize="8"
-              fontWeight="bold"
-            >
-              Depósito
-            </SvgText>
-
-            {/* ── LABEL DESTINO ── */}
-            <Rect x="261" y="254" width="68" height="16" rx="4" fill="rgba(22,163,74,0.9)" />
-            <SvgText
-              x="295" y="265"
-              textAnchor="middle"
-              fill="#fff"
-              fontSize="8"
-              fontWeight="bold"
-            >
-              {obraNome.length > 10 ? obraNome.slice(0, 10) + '…' : obraNome}
-            </SvgText>
-
-            {/* ── BADGE PORCENTAGEM (canto superior direito do mapa) ── */}
-            <Rect
-              x={SVG_W - 52} y="8"
-              width="44" height="20"
-              rx="10"
-              fill="rgba(0,0,0,0.45)"
-              stroke="#22C55E"
-              strokeWidth="1"
-            />
-            <SvgText
-              x={SVG_W - 30} y="21"
-              textAnchor="middle"
-              fill="#22C55E"
-              fontSize="10"
-              fontWeight="bold"
-            >
-              {posicaoCaminhao}%
-            </SvgText>
-
-            {/* ── CAMINHÃO ── */}
-            {/* Centrado em (posicaoTruck.x, posicaoTruck.y) */}
-            <G transform={`translate(${posicaoTruck.x - 13}, ${posicaoTruck.y - 9})`}>
-              {/* Aura/glow do caminhão */}
-              <Circle cx="13" cy="8" r="15" fill="rgba(34, 197, 94, 0.12)" />
-              {/* Carroceria */}
-              <Rect x="0" y="3" width="18" height="11" rx="2" fill={status.cor} />
-              {/* Cabine */}
-              <Rect x="13" y="0" width="9" height="10" rx="2" fill="#15803D" />
-              {/* Para-brisa */}
-              <Rect x="14" y="1" width="6" height="5" rx="1" fill="rgba(255,255,255,0.45)" />
-              {/* Rodas */}
-              <Circle cx="4"  cy="14" r="3" fill="#1E3A8A" stroke="#fff" strokeWidth="1" />
-              <Circle cx="15" cy="14" r="3" fill="#1E3A8A" stroke="#fff" strokeWidth="1" />
-            </G>
-
-          </Svg>
-
+          <MapaRota
+            rota={ROTA}
+            progresso={posicaoCaminhao}
+            nomeOrigem="Depósito Central"
+            nomeDestino={obraNome}
+            altura={280}
+          />
         </View>
 
         {/* ── CARD DE INFORMAÇÕES ── */}
@@ -320,6 +230,9 @@ export default function LocalizacaoScreen({ navigation, route }) {
         </View>
 
         {/* ── BOTÕES DE CONTROLE ── */}
+        {/* So a construtora: a betoneira e dela. O mestre acompanha e nao
+            controla, entao para ele estes botoes nem sao desenhados. */}
+        {!somenteLeitura && (
         <View style={styles.botoesControle}>
 
           {/* ▶️ Iniciar */}
@@ -359,10 +272,12 @@ export default function LocalizacaoScreen({ navigation, route }) {
           </TouchableOpacity>
 
         </View>
-
+        )}
 
         <Text style={styles.notaDemonstracao}>
-          * Mapa simulado — LoRa em integração
+          {somenteLeitura
+            ? '* Posição enviada pela construtora — LoRa em integração'
+            : '* Trajeto simulado — LoRa em integração'}
         </Text>
 
       </ScrollView>
@@ -434,7 +349,7 @@ const styles = StyleSheet.create({
   cardMapa: {
     marginHorizontal: 16,
     marginBottom: 14,
-    overflow: 'hidden',   // garante que o SVG respeita borderRadius
+    overflow: 'hidden',   // garante que o mapa respeita borderRadius
     padding: 0,
   },
 

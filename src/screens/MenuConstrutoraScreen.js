@@ -38,7 +38,9 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
       icone: 'location-outline',
       tipoIcone: 'Ionicons',
       texto: 'Rastrear Caminhões',
-      tela: 'RastrearCaminhoes',
+      // Mesma tela que o mestre ve, mas sem somenteLeitura: aqui existem os
+      // botoes de iniciar, pausar e reiniciar a viagem
+      tela: 'Localizacao',
     },
     {
       id: 'historico-entregas',
