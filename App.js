@@ -6,19 +6,19 @@ import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ObrasProvider } from './src/context/ObrasContext';
 import { CaminhoesProvider } from './src/context/CaminhoesContext';
-import { FinanceiroProvider } from './src/context/FinanceiroContext';
 
 export default function App() {
   return (
     // ObrasProvider disponibiliza a lista de obras para todas as telas do app
     // CaminhoesProvider disponibiliza os envios de caminhao para todas as telas
-    // FinanceiroProvider disponibiliza as compras de cimento por obra (Mestre)
+    //
+    // O financeiro nao tem Provider: as compras vivem no Supabase e a tela le
+    // direto de la (ver services/financeiro.js). Guardar em Context so criava
+    // uma segunda fonte de verdade, que sumia ao fechar o app.
     <ObrasProvider>
       <CaminhoesProvider>
-        <FinanceiroProvider>
-          <StatusBar style="light" />
-          <AppNavigator />
-        </FinanceiroProvider>
+        <StatusBar style="light" />
+        <AppNavigator />
       </CaminhoesProvider>
     </ObrasProvider>
   );

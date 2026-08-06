@@ -28,14 +28,10 @@ const mqttConfig = {
   // Formato: { obra_id, temperatura } (campos extras sao ignorados)
   topicoRespostaCaminhao: 'app/enviar_caminhao/resp',
 
-  // Topico onde o app publica uma nova compra de cimento (tela Financeiro)
-  // Formato: { obra_id, valor_total, volume_comprado, data }
-  topicoFinanceiro: 'app/financeiro',
-
-  // Topico onde o backend responde com os dados financeiros atualizados da obra
-  // Formato: { status, mensagem, id_financeiro, id_obra,
-  //   resumo_obra: { total_gasto, total_gasto_cimento, total_cimento_comprado } }
-  topicoRespostaFinanceiro: 'app/financeiro/resp',
+  // Nota: os topicos de financeiro (app/financeiro e app/financeiro/resp)
+  // sairam daqui — as compras de cimento agora vao para o Supabase.
+  // Registrar uma compra e escrita transacional, nao telemetria: precisa de
+  // confirmacao e de historico, e o MQTT nao devolve nem "gravei".
 
   // Qualidade de servico — QoS 1 = entrega garantida pelo menos uma vez
   qos: 1,

@@ -1,10 +1,14 @@
 // Tela Financeiro — controle de gastos com cimento por obra
-// Acesso exclusivo do Mestre. Cadastro manual, salvo no FinanceiroContext e
-// publicado no MQTT (topico app/financeiro); backend responde em app/financeiro/resp
-// Os cards de resumo exibem os totais vindos do backend (resumo_obra), nao do Context
-// Recebe obraId e obraNome via route.params
+// Acesso exclusivo do Mestre. Recebe obraId e obraNome via route.params
+//
+// As compras vivem na tabela compras_cimento do Supabase (ver
+// services/financeiro.js). Antes ficavam no FinanceiroContext, em memoria, e
+// os cards de resumo liam totais que vinham do backend por MQTT — lista e
+// resumo podiam discordar, e a lista sumia ao fechar o app.
+//
+// Agora ha uma fonte so: os totais sao somados da mesma lista exibida aqui.
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +19,7 @@ import {
   TextInput,
   Platform,
   Alert,
+  ActivityIndicator,
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
@@ -23,27 +28,37 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-import { useFinanceiro } from '../context/FinanceiroContext';
-import { publicarFinanceiro, inscreverFinanceiro } from '../services/mqtt';
+import {
+  buscarCompras,
+  adicionarCompra,
+  removerCompra,
+  calcularTotais,
+} from '../services/financeiro';
 
 // Formata numero para o padrao monetario brasileiro: R$ X.XXX,XX
 function formatarMoeda(valor) {
   return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Formata objeto Date para DD/MM
-function formatarDataCurta(data) {
-  const d = new Date(data);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+// Formata a data do banco ('AAAA-MM-DD') para DD/MM.
+// Nao usa new Date() de proposito: essa string e interpretada como UTC, e no
+// fuso do Brasil isso mostraria o dia anterior.
+function formatarDataCurta(dataISO) {
+  const [, mes, dia] = String(dataISO).slice(0, 10).split('-');
+  return `${dia}/${mes}`;
 }
 
 export default function FinanceiroScreen({ navigation, route }) {
   const { obraId, obraNome } = route.params;
-  const { adicionarCompra, getCompras, getTotalGasto, getTotalVolume } = useFinanceiro();
 
-  const compras = getCompras(obraId);
-  const totalGasto = getTotalGasto(obraId);
-  const totalVolume = getTotalVolume(obraId);
+  const [compras, setCompras]       = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro]             = useState(null);
+  const [salvando, setSalvando]     = useState(false);
+
+  // Somados da mesma lista que a tela exibe — e o que impede o resumo de
+  // discordar do historico logo abaixo dele
+  const { gasto: totalGasto, volume: totalVolume } = calcularTotais(compras);
 
   // ── ESTADOS DO MODAL ──
   const [modalVisivel, setModalVisivel] = useState(false);
@@ -53,30 +68,22 @@ export default function FinanceiroScreen({ navigation, route }) {
   const [valor, setValor] = useState('');
   const inputValorRef = useRef(null);
 
-  // ── DADOS FINANCEIROS DO BACKEND (fonte dos cards de resumo) ──
-  const [totalGastoBackend, setTotalGastoBackend] = useState(0);
-  const [totalCimentoBackend, setTotalCimentoBackend] = useState(0);
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
 
-  // Inscreve no topico de resposta do financeiro (app/financeiro/resp),
-  // filtrado pela obra selecionada. Desinscreve ao trocar de obra ou sair da tela.
-  useEffect(() => {
-    if (!obraId) {
-      console.warn('[Financeiro] Nenhuma obra selecionada!');
-      return;
+    try {
+      setCompras(await buscarCompras(obraId));
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setCarregando(false);
     }
-
-    console.log(`[Financeiro] Inscrevendo para obra ${obraId}`);
-
-    const desinscrever = inscreverFinanceiro(obraId, (dadosFinanceiro) => {
-      console.log('[Financeiro] ✅ Atualizando com dados do backend:', dadosFinanceiro);
-      setTotalGastoBackend(dadosFinanceiro.totalGasto);
-      setTotalCimentoBackend(dadosFinanceiro.totalCimentoComprado);
-    });
-
-    return () => {
-      if (desinscrever) desinscrever();
-    };
   }, [obraId]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
 
   function abrirModal() {
     setData(new Date());
@@ -104,27 +111,48 @@ export default function FinanceiroScreen({ navigation, route }) {
     if (!valor || parseFloat(valor) <= 0) {
       return Alert.alert('Campo obrigatório', 'Informe o valor da compra em R$.');
     }
+    if (salvando) return;
 
-    // Salva localmente (Context) — fonte da verdade da tela
-    adicionarCompra(obraId, {
-      data: data.toISOString(),
-      volume: parseFloat(volume),
-      valor: parseFloat(valor),
-    });
-
-    // Publica no MQTT — melhor esforco, nao bloqueia o salvamento local
+    setSalvando(true);
     try {
-      await publicarFinanceiro({
-        obraId,
-        valorTotal: totalGasto + parseFloat(valor),
-        volumeComprado: totalVolume + parseFloat(volume),
+      const nova = await adicionarCompra(obraId, {
+        data,
+        volume: parseFloat(volume),
+        valor: parseFloat(valor),
       });
-      console.log('[Financeiro] Publicado no MQTT');
-    } catch (erro) {
-      console.log('[Financeiro] Erro ao publicar MQTT:', erro.message);
-    }
 
-    fecharModal();
+      // A lista vem ordenada por data decrescente, e a compra recem-lancada
+      // costuma ser a mais recente — entra no topo sem precisar reconsultar
+      setCompras((atuais) => [nova, ...atuais]);
+      fecharModal();
+    } catch (falha) {
+      Alert.alert('Erro', falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  // Lancamento errado acontece; sem isto a unica saida seria mexer no banco
+  function confirmarRemocao(compra) {
+    Alert.alert(
+      'Remover compra',
+      `Apagar o lançamento de R$ ${formatarMoeda(compra.valor)}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removerCompra(compra.id);
+              setCompras((atuais) => atuais.filter((c) => c.id !== compra.id));
+            } catch (falha) {
+              Alert.alert('Erro', falha.message);
+            }
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -169,36 +197,62 @@ export default function FinanceiroScreen({ navigation, route }) {
           <View style={styles.cardResumo}>
             <Text style={styles.emojiResumo}>💰</Text>
             <Text style={styles.labelResumo}>Total Gasto</Text>
-            <Text style={styles.valorResumo}>R$ {formatarMoeda(totalGastoBackend)}</Text>
+            <Text style={styles.valorResumo}>R$ {formatarMoeda(totalGasto)}</Text>
           </View>
 
           <View style={styles.cardResumo}>
             <Text style={styles.emojiResumo}>📦</Text>
             <Text style={styles.labelResumo}>Cimento Comprado</Text>
-            <Text style={styles.valorResumo}>{formatarMoeda(totalCimentoBackend)} m³</Text>
+            <Text style={styles.valorResumo}>{formatarMoeda(totalVolume)} m³</Text>
           </View>
         </View>
 
         {/* ── HISTORICO DE COMPRAS ── */}
         <Text style={styles.tituloSecao}>Histórico de Compras</Text>
 
-        {compras.length === 0 ? (
+        {carregando && (
+          <View style={styles.vazioContainer}>
+            <ActivityIndicator size="large" color="#22C55E" />
+            <Text style={styles.vazioTexto}>Carregando compras...</Text>
+          </View>
+        )}
+
+        {!carregando && erro && (
+          <View style={styles.vazioContainer}>
+            <Ionicons name="cloud-offline-outline" size={36} color="rgba(255,255,255,0.3)" />
+            <Text style={styles.vazioTexto}>{erro}</Text>
+          </View>
+        )}
+
+        {!carregando && !erro && compras.length === 0 && (
           <View style={styles.vazioContainer}>
             <Ionicons name="receipt-outline" size={36} color="rgba(255,255,255,0.3)" />
             <Text style={styles.vazioTexto}>Nenhuma compra cadastrada ainda</Text>
           </View>
-        ) : (
+        )}
+
+        {!carregando && !erro && compras.length > 0 && (
           <View style={styles.listaCompras}>
             {compras.map((compra) => (
-              <View key={compra.id} style={styles.cardCompra}>
+              // Toque longo remove: evita botao de lixeira em cada linha,
+              // que poluiria uma lista que costuma ser longa
+              <TouchableOpacity
+                key={compra.id}
+                style={styles.cardCompra}
+                onLongPress={() => confirmarRemocao(compra)}
+                delayLongPress={500}
+                activeOpacity={0.7}
+              >
                 <View style={styles.cardCompraData}>
                   <Ionicons name="calendar-outline" size={16} color="#22C55E" />
                   <Text style={styles.cardCompraDataTexto}>{formatarDataCurta(compra.data)}</Text>
                 </View>
                 <Text style={styles.cardCompraVolume}>{formatarMoeda(compra.volume)} m³</Text>
                 <Text style={styles.cardCompraValor}>R$ {formatarMoeda(compra.valor)}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
+
+            <Text style={styles.dicaRemover}>Toque e segure em uma compra para remover</Text>
           </View>
         )}
 
@@ -274,8 +328,14 @@ export default function FinanceiroScreen({ navigation, route }) {
                 <TouchableOpacity style={styles.modalBotaoCancelar} onPress={fecharModal}>
                   <Text style={styles.modalTextoCancelar}>Cancelar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalBotaoSalvar} onPress={handleSalvar}>
-                  <Text style={styles.modalTextoSalvar}>Salvar</Text>
+                <TouchableOpacity
+                  style={[styles.modalBotaoSalvar, salvando && styles.modalBotaoSalvando]}
+                  onPress={handleSalvar}
+                  disabled={salvando}
+                >
+                  <Text style={styles.modalTextoSalvar}>
+                    {salvando ? 'Salvando...' : 'Salvar'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -401,6 +461,13 @@ const styles = StyleSheet.create({
   modalBotaoSalvar: {
     flex: 1, height: 48, backgroundColor: '#2ECC40', borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
+  },
+
+  modalBotaoSalvando: { backgroundColor: '#27AE60', opacity: 0.8 },
+
+  dicaRemover: {
+    color: 'rgba(255,255,255,0.3)', fontSize: 11,
+    textAlign: 'center', fontStyle: 'italic', marginTop: 10,
   },
 
   modalTextoSalvar: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
