@@ -1,6 +1,9 @@
 // Tela de Temperatura — exibe o velocimetro com a temperatura atual do cimento
-// Fluxo: SelecionarObra → MenuObra → Temperatura (esta tela)
-// Recebe obraId e obraNome via route.params
+// Recebe obraId, obraNome e somenteLeitura via route.params
+//
+// Compartilhada pelos dois perfis: o mestre acompanha o concreto que chegou na
+// obra dele, a construtora acompanha o que ela mandou. A diferenca e que so o
+// mestre tem os botoes de simulacao, porque quem esta no canteiro e quem mede.
 //
 // O valor exibido e a ULTIMA LEITURA GRAVADA da obra, consultada no banco.
 // Enquanto o sensor publicava por MQTT, ele chegava sozinho pelo broker; a
@@ -100,7 +103,7 @@ function formatarQuando(iso) {
 
 // ── COMPONENTE PRINCIPAL ──
 export default function TemperaturaScreen({ navigation, route }) {
-  const { obraId, obraNome } = route.params;
+  const { obraId, obraNome, somenteLeitura = false } = route.params;
 
   // 75 °C (zona NORMAL) e so o valor mostrado ate a primeira consulta voltar
   const [temperatura, setTemperatura] = useState(75);
@@ -293,7 +296,11 @@ export default function TemperaturaScreen({ navigation, route }) {
         {/* ── BOTOES DE SIMULACAO ── */}
         {/* Gravam uma leitura de verdade, e nao so mudam o mostrador: assim a
             tela e o Historico se comportam igual ao que farao com o sensor.
-            Saem quando o hardware estiver integrado. */}
+            Saem quando o hardware estiver integrado.
+
+            So aparecem para o mestre: a medicao acontece no canteiro, e a
+            construtora acompanha o resultado sem poder alterar. */}
+        {!somenteLeitura && (
         <View style={styles.botoesContainer}>
           {ZONAS.map((zona) => (
             <TouchableOpacity
@@ -312,6 +319,7 @@ export default function TemperaturaScreen({ navigation, route }) {
             </TouchableOpacity>
           ))}
         </View>
+        )}
 
         {/* ── CARD VOLUME DE CIMENTO ── */}
         <View style={styles.cardVolume}>

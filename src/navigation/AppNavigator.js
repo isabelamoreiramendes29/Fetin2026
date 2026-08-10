@@ -26,11 +26,10 @@ import LocalizacaoScreen from '../screens/LocalizacaoScreen';
 // ── MENU DA CONSTRUTORA ──
 import MenuConstrutoraScreen from '../screens/MenuConstrutoraScreen';
 
-// ── TELAS DO MENU DA CONSTRUTORA (placeholders) ──
+// ── TELAS DO MENU DA CONSTRUTORA ──
 import EnviarCaminhaoScreen from '../screens/EnviarCaminhaoScreen';
 import FrotaScreen from '../screens/FrotaScreen';
 import HistoricoEntregasScreen from '../screens/HistoricoEntregasScreen';
-import MonitorarTemperaturaScreen from '../screens/MonitorarTemperaturaScreen';
 
 // ── MAPA DE CONCRETAGEM ──
 // Compartilhada pelos dois perfis: a Construtora edita, o Mestre so consulta.
@@ -76,11 +75,10 @@ export default function AppNavigator() {
         {/* ── MENU PRINCIPAL DA CONSTRUTORA ── */}
         <Stack.Screen name="MenuConstrutora" component={MenuConstrutoraScreen} />
 
-        {/* ── TELAS DO MENU DA CONSTRUTORA (placeholders) ── */}
+        {/* ── TELAS DO MENU DA CONSTRUTORA ── */}
         <Stack.Screen name="EnviarCaminhao"        component={EnviarCaminhaoScreen} />
         <Stack.Screen name="Frota"                 component={FrotaScreen} />
         <Stack.Screen name="HistoricoEntregas"     component={HistoricoEntregasScreen} />
-        <Stack.Screen name="MonitorarTemperatura"  component={MonitorarTemperaturaScreen} />
 
         {/* ── MAPA DE CONCRETAGEM (Construtora edita, Mestre consulta) ── */}
         <Stack.Screen name="MapaConcretagem" component={MapaConcretagemScreen} />

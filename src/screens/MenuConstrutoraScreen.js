@@ -61,7 +61,10 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
       icone: 'thermometer-outline',
       tipoIcone: 'Ionicons',
       texto: 'Monitorar Temperatura',
-      tela: 'MonitorarTemperatura',
+      // Mesma tela do mestre, sem os botoes de medicao: quem mede e quem esta
+      // no canteiro recebendo o concreto
+      tela: 'Temperatura',
+      params: { somenteLeitura: true },
     },
     {
       id: 'mapa-concretagem',
@@ -75,8 +78,9 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
   // Navega para a tela do item clicado, sempre passando obraId e obraNome —
   // igual ao MenuMestre. Monitorar Temperatura precisa do obraId para saber
   // de qual obra ler as leituras.
-  function handleNavegar(tela) {
-    navigation.navigate(tela, { obraId, obraNome });
+  // params permite que um item leve dados extras, como somenteLeitura
+  function handleNavegar(tela, params) {
+    navigation.navigate(tela, { obraId, obraNome, ...params });
   }
 
   return (
@@ -128,7 +132,7 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
               icone={item.icone}
               tipoIcone={item.tipoIcone}
               texto={item.texto}
-              onPress={() => handleNavegar(item.tela)}
+              onPress={() => handleNavegar(item.tela, item.params)}
             />
           ))}
         </View>
