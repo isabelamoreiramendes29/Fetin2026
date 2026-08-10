@@ -1,7 +1,11 @@
 // Tela de Selecionar Obra (Construtora) — aparece logo apos o login como Construtora
 // Diferente do Mestre, a Construtora nao pode adicionar obras: ve as obras
 // cadastradas pelo Mestre, vindas do contexto global (ObrasContext).
-// TODO: quando integrar com MQTT, filtrar por email_construtora em vez de mostrar todas.
+//
+// Nao ha filtro aqui de proposito. Quem filtra e o servidor: as policies da
+// tabela obras so devolvem as obras em que o e-mail da construtora logada foi
+// informado. Antes, o backend publicava a lista inteira por MQTT e o app
+// escolhia o que mostrar — os dados alheios chegavam ao aparelho.
 
 import React from 'react';
 import {
@@ -10,6 +14,7 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
@@ -19,7 +24,7 @@ import BotaoSair from '../components/BotaoSair';
 
 export default function SelecionarObraConstrutoraScreen({ navigation }) {
   // Acessa a lista real de obras do contexto global, cadastradas pelo Mestre
-  const { obras } = useObras();
+  const { obras, carregando, erro } = useObras();
 
   // Vai para o menu da obra selecionada, passando os dados como parametro
   function handlePressCard(item) {
@@ -81,13 +86,28 @@ export default function SelecionarObraConstrutoraScreen({ navigation }) {
         contentContainerStyle={styles.lista}
         showsVerticalScrollIndicator={false}
         // Mensagem exibida quando ainda nao ha nenhuma obra cadastrada
+        // Enquanto a consulta nao volta, mostrar "nenhuma obra" seria mentira:
+        // a lista pode muito bem ter obras
         ListEmptyComponent={
-          <View style={styles.vazioContainer}>
-            <Ionicons name="business-outline" size={48} color="rgba(255,255,255,0.3)" />
-            <Text style={styles.vazioTexto}>
-              Nenhuma obra disponível ainda.{'\n'}Aguarde um Mestre de Obra cadastrar obras.
-            </Text>
-          </View>
+          carregando ? (
+            <View style={styles.vazioContainer}>
+              <ActivityIndicator size="large" color="#2ECC40" />
+              <Text style={styles.vazioTexto}>Carregando obras...</Text>
+            </View>
+          ) : erro ? (
+            <View style={styles.vazioContainer}>
+              <Ionicons name="cloud-offline-outline" size={48} color="rgba(255,255,255,0.3)" />
+              <Text style={styles.vazioTexto}>{erro}</Text>
+            </View>
+          ) : (
+            <View style={styles.vazioContainer}>
+              <Ionicons name="business-outline" size={48} color="rgba(255,255,255,0.3)" />
+              <Text style={styles.vazioTexto}>
+                Nenhuma obra disponível ainda.{'\n'}Aguarde um Mestre de Obra cadastrar obras
+                informando o seu e-mail.
+              </Text>
+            </View>
+          )
         }
       />
 

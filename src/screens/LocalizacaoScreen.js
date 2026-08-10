@@ -12,7 +12,7 @@
 // O que ainda e simulado e o avanco em si: o modulo GPS/LoRa nao publica
 // coordenadas ainda. Quando publicar, ele passa a alimentar a mesma tabela.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import MapaRota, { comprimentoRota } from '../components/MapaRota';
-import { publicarPosicao, buscarPosicao } from '../services/rastreamento';
+import { publicarPosicao, buscarPosicoes } from '../services/rastreamento';
+import { corDoCaminhao } from '../services/planta';
+import { buscarFrota, acharCaminhao } from '../services/frota';
 
 // De quanto em quanto tempo o mestre reconsulta a posicao do caminhao
 const INTERVALO_CONSULTA_MS = 3000;
@@ -72,83 +74,119 @@ function getStatus(pos) {
 export default function LocalizacaoScreen({ navigation, route }) {
   const { obraId, obraNome = 'Obra 1', somenteLeitura = false } = route.params || {};
 
-  const [posicaoCaminhao,    setPosicaoCaminhao]    = useState(0);
-  const [simulandoMovimento, setSimulandoMovimento] = useState(false);
+  // Uma entrada por caminhao a caminho desta obra
+  const [posicoes, setPosicoes]     = useState([]);
+  const [selecionado, setSelecionado] = useState(null);
+  const [simulando, setSimulando]   = useState(false);
 
-  // So publica depois da carga inicial. Sem isso, o primeiro render (com
-  // progresso 0) sobrescreveria no banco a posicao real do caminhao.
-  const jaCarregou = useRef(false);
+  // O intervalo precisa ler o progresso mais recente sem se recriar a cada
+  // avanco — daí a copia em ref
+  const posicoesRef = useRef(posicoes);
+  useEffect(() => { posicoesRef.current = posicoes; }, [posicoes]);
 
-  // ── CARGA INICIAL: onde o caminhao estava quando a tela abriu ──
-  useEffect(() => {
+  // ── CARREGAR AS POSICOES ──
+  const carregar = useCallback(async () => {
     if (!obraId) return;
-    let cancelado = false;
 
-    buscarPosicao(obraId)
-      .then(({ progresso, emMovimento }) => {
-        if (cancelado) return;
-        setPosicaoCaminhao(progresso);
-        if (!somenteLeitura) setSimulandoMovimento(emMovimento);
-        jaCarregou.current = true;
-      })
-      .catch((falha) => console.warn('[Localizacao]', falha.message));
+    try {
+      const lista = await buscarPosicoes(obraId);
+      setPosicoes(lista);
+      // Seleciona o primeiro caminhao automaticamente, para a construtora nao
+      // precisar escolher antes de poder fazer qualquer coisa
+      setSelecionado((atual) => atual ?? lista[0]?.caminhao ?? null);
+    } catch (falha) {
+      console.warn('[Localizacao]', falha.message);
+    }
+  }, [obraId]);
 
-    return () => { cancelado = true; };
-  }, [obraId, somenteLeitura]);
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  // A frota traz placa, motorista e capacidade. Carregada uma vez: ela muda
+  // muito menos que a posicao dos caminhoes.
+  const [frota, setFrota] = useState([]);
+
+  useEffect(() => {
+    buscarFrota()
+      .then(setFrota)
+      .catch((falha) => console.warn('[Localizacao] Frota:', falha.message));
+  }, []);
 
   // ── MODO CONSULTA (mestre): reconsulta o banco periodicamente ──
   useEffect(() => {
     if (!somenteLeitura || !obraId) return;
 
-    const intervalo = setInterval(async () => {
-      try {
-        const { progresso, emMovimento } = await buscarPosicao(obraId);
-        setPosicaoCaminhao(progresso);
-        setSimulandoMovimento(emMovimento);
-      } catch (falha) {
-        console.warn('[Localizacao] Falha ao atualizar:', falha.message);
-      }
-    }, INTERVALO_CONSULTA_MS);
-
+    const intervalo = setInterval(carregar, INTERVALO_CONSULTA_MS);
     return () => clearInterval(intervalo);
-  }, [somenteLeitura, obraId]);
+  }, [somenteLeitura, obraId, carregar]);
 
-  // ── MODO CONTROLE (construtora): avanca a simulacao ──
+  // Atualiza a posicao do caminhao selecionado na tela e publica no banco,
+  // para o mestre enxergar do aparelho dele
+  const moverSelecionado = useCallback((progresso, emMovimento) => {
+    setPosicoes((atuais) =>
+      atuais.map((p) =>
+        p.caminhao === selecionado ? { ...p, progresso, emMovimento } : p
+      )
+    );
+    publicarPosicao(obraId, selecionado, progresso, emMovimento);
+  }, [obraId, selecionado]);
+
+  // ── MODO CONTROLE (construtora): avanca a simulacao do caminhao escolhido ──
   useEffect(() => {
-    if (somenteLeitura || !simulandoMovimento) return;
+    if (somenteLeitura || !simulando || !selecionado) return;
 
     const intervalo = setInterval(() => {
-      setPosicaoCaminhao((pos) => Math.min(pos + PASSO_PCT, 100));
+      const atual = posicoesRef.current.find((p) => p.caminhao === selecionado);
+      if (!atual) return;
+
+      const proximo = Math.min(atual.progresso + PASSO_PCT, 100);
+      const chegou = proximo >= 100;
+
+      moverSelecionado(proximo, !chegou);
+      if (chegou) setSimulando(false);
     }, PASSO_MS);
 
     return () => clearInterval(intervalo);
-  }, [somenteLeitura, simulandoMovimento]);
+  }, [somenteLeitura, simulando, selecionado, moverSelecionado]);
 
-  // Para sozinho ao chegar no destino
-  useEffect(() => {
-    if (somenteLeitura) return;
-    if (posicaoCaminhao >= 100 && simulandoMovimento) setSimulandoMovimento(false);
-  }, [posicaoCaminhao, simulandoMovimento, somenteLeitura]);
-
-  // ── PUBLICA CADA MUDANCA, para o mestre enxergar ──
-  useEffect(() => {
-    if (somenteLeitura || !obraId || !jaCarregou.current) return;
-    publicarPosicao(obraId, posicaoCaminhao, simulandoMovimento);
-  }, [posicaoCaminhao, simulandoMovimento, somenteLeitura, obraId]);
+  // Trocar de caminhao pausa a simulacao: seria confuso o botao continuar
+  // dizendo "Pausar" enquanto move um caminhao que nao esta mais selecionado
+  function escolherCaminhao(caminhao) {
+    setSimulando(false);
+    setSelecionado(caminhao);
+  }
 
   // ── DERIVADOS ──
-  const status            = getStatus(posicaoCaminhao);
-  const distanciaRestante = (DISTANCIA_TOTAL * (100 - posicaoCaminhao) / 100).toFixed(1);
-  const tempoRestante     = Math.round(TEMPO_TOTAL * (100 - posicaoCaminhao) / 100);
+  // A construtora acompanha o caminhao que esta dirigindo; o mestre, no
+  // canteiro, se interessa pelo proximo a chegar
+  const emFoco = somenteLeitura
+    ? posicoes.reduce(
+        (maisAdiantado, p) => (!maisAdiantado || p.progresso > maisAdiantado.progresso ? p : maisAdiantado),
+        null
+      )
+    : posicoes.find((p) => p.caminhao === selecionado);
+
+  const progressoEmFoco   = emFoco?.progresso ?? 0;
+  const status            = getStatus(progressoEmFoco);
+  const distanciaRestante = (DISTANCIA_TOTAL * (100 - progressoEmFoco) / 100).toFixed(1);
+  const tempoRestante     = Math.round(TEMPO_TOTAL * (100 - progressoEmFoco) / 100);
+
+  // Dados cadastrais do caminhao em foco. Antes placa e motorista eram fixos
+  // no codigo (ABC-1234 e João Silva), iguais para qualquer viagem.
+  const dadosCaminhao = emFoco ? acharCaminhao(frota, emFoco.caminhao) : null;
 
   // Grid de informações do card
   const infoItems = [
-    { icone: 'location-outline',   label: 'ORIGEM',    valor: 'Depósito Central'       },
-    { icone: 'flag-outline',        label: 'DESTINO',   valor: obraNome                 },
-    { icone: 'speedometer-outline', label: 'DISTÂNCIA', valor: `${distanciaRestante} km`},
-    { icone: 'time-outline',        label: 'ETA',       valor: `${tempoRestante} min`   },
-    { icone: 'car-outline',         label: 'PLACA',     valor: 'ABC-1234'               },
-    { icone: 'person-outline',      label: 'MOTORISTA', valor: 'João Silva'             },
+    { icone: 'car-outline',         label: somenteLeitura ? 'PRÓXIMO' : 'CAMINHÃO',
+                                    valor: emFoco ? `Caminhão ${emFoco.caminhao}` : '—'      },
+    { icone: 'card-outline',        label: 'PLACA',
+                                    valor: dadosCaminhao?.placa || '—'                       },
+    { icone: 'person-outline',      label: 'MOTORISTA',
+                                    valor: dadosCaminhao?.motorista || '—'                   },
+    { icone: 'flag-outline',        label: 'DESTINO',     valor: obraNome                     },
+    { icone: 'speedometer-outline', label: 'DISTÂNCIA',   valor: `${distanciaRestante} km`    },
+    { icone: 'time-outline',        label: 'ETA',         valor: `${tempoRestante} min`       },
   ];
 
   return (
@@ -194,12 +232,50 @@ export default function LocalizacaoScreen({ navigation, route }) {
         <View style={[styles.card, styles.cardMapa]}>
           <MapaRota
             rota={ROTA}
-            progresso={posicaoCaminhao}
+            caminhoes={posicoes}
+            destaque={somenteLeitura ? null : selecionado}
             nomeOrigem="Depósito Central"
             nomeDestino={obraNome}
             altura={280}
           />
         </View>
+
+        {posicoes.length === 0 && (
+          <View style={styles.avisoVazio}>
+            <Ionicons name="information-circle-outline" size={18} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.avisoVazioTexto}>
+              {somenteLeitura
+                ? 'Nenhum caminhão a caminho desta obra.'
+                : 'Nenhum caminhão despachado ainda. Use "Enviar Caminhão" no menu.'}
+            </Text>
+          </View>
+        )}
+
+        {/* ── SELETOR DE CAMINHAO ── */}
+        {/* So a construtora, e so quando ha mais de um: com um caminhao so,
+            o seletor seria um botao que nao decide nada */}
+        {!somenteLeitura && posicoes.length > 1 && (
+          <View style={styles.seletor}>
+            {posicoes.map((p) => (
+              <TouchableOpacity
+                key={p.caminhao}
+                style={[
+                  styles.seletorItem,
+                  p.caminhao === selecionado && {
+                    borderColor: corDoCaminhao(p.caminhao),
+                    backgroundColor: 'rgba(255,255,255,0.08)',
+                  },
+                ]}
+                onPress={() => escolherCaminhao(p.caminhao)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.seletorPonto, { backgroundColor: corDoCaminhao(p.caminhao) }]} />
+                <Text style={styles.seletorTexto}>{p.caminhao}</Text>
+                <Text style={styles.seletorPct}>{Math.round(p.progresso)}%</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* ── CARD DE INFORMAÇÕES ── */}
         <View style={[styles.card, styles.cardInfo]}>
@@ -232,15 +308,16 @@ export default function LocalizacaoScreen({ navigation, route }) {
         {/* ── BOTÕES DE CONTROLE ── */}
         {/* So a construtora: a betoneira e dela. O mestre acompanha e nao
             controla, entao para ele estes botoes nem sao desenhados. */}
-        {!somenteLeitura && (
+        {/* Os controles agem sobre o caminhao selecionado, nao sobre a obra */}
+        {!somenteLeitura && emFoco && (
         <View style={styles.botoesControle}>
 
           {/* ▶️ Iniciar */}
           <TouchableOpacity
             style={[styles.botaoControle, styles.botaoIniciar]}
             onPress={() => {
-              if (posicaoCaminhao >= 100) return;
-              setSimulandoMovimento(true);
+              if (progressoEmFoco >= 100) return;
+              setSimulando(true);
             }}
             activeOpacity={0.8}
           >
@@ -251,7 +328,10 @@ export default function LocalizacaoScreen({ navigation, route }) {
           {/* ⏸️ Pausar */}
           <TouchableOpacity
             style={[styles.botaoControle, styles.botaoPausar]}
-            onPress={() => setSimulandoMovimento(false)}
+            onPress={() => {
+              setSimulando(false);
+              moverSelecionado(progressoEmFoco, false);
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name="pause" size={15} color="#fff" />
@@ -262,8 +342,8 @@ export default function LocalizacaoScreen({ navigation, route }) {
           <TouchableOpacity
             style={[styles.botaoControle, styles.botaoResetar]}
             onPress={() => {
-              setSimulandoMovimento(false);
-              setPosicaoCaminhao(0);
+              setSimulando(false);
+              moverSelecionado(0, false);
             }}
             activeOpacity={0.8}
           >
@@ -407,6 +487,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+
+  // ── AVISO DE LISTA VAZIA ──
+  avisoVazio: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 14,
+    paddingVertical: 12, paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10,
+  },
+
+  avisoVazioTexto: { color: 'rgba(255,255,255,0.6)', fontSize: 12.5, flex: 1 },
+
+  // ── SELETOR DE CAMINHÃO ──
+  seletor: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    paddingHorizontal: 16, marginBottom: 14,
+  },
+
+  seletorItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 9, paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+  },
+
+  seletorPonto: { width: 9, height: 9, borderRadius: 5 },
+
+  seletorTexto: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+
+  seletorPct: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 
   // ── BOTÕES DE CONTROLE ──
   botoesControle: {

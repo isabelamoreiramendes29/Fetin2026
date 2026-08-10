@@ -1,15 +1,17 @@
-// Tela Enviar Caminhao — a Construtora escolhe um dos 2 caminhoes de teste
-// (4 ou 5) e a obra de destino. Etapa 1: interface + persistencia local via
-// CaminhoesContext (sem MQTT ainda).
+// Tela Enviar Caminhao — a Construtora escolhe um dos caminhoes e a obra de
+// destino. O envio e gravado no Supabase (ver services/caminhoes.js) e ja cria
+// a posicao inicial do caminhao, para ele aparecer na tela de rastreamento.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
   Alert,
+  Modal,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,12 +20,10 @@ import { Picker } from '@react-native-picker/picker';
 
 import { useObras } from '../context/ObrasContext';
 import { useCaminhoes } from '../context/CaminhoesContext';
-import { publicarEnvioCaminhao } from '../services/mqtt';
+import { buscarFrota } from '../services/frota';
+import { registrarVolumeEntregue } from '../services/caminhoes';
 
 const { width } = Dimensions.get('window');
-
-// Caminhoes disponiveis para teste — fixos, sem cadastro dinamico ainda
-const CAMINHOES = ['4', '5'];
 
 // Formata a data ISO do envio para "DD/MM/AAAA HH:mm"
 function formatarDataHora(isoString) {
@@ -35,12 +35,63 @@ function formatarDataHora(isoString) {
 
 export default function EnviarCaminhaoScreen({ navigation }) {
   const { obras } = useObras();
-  const { caminhoes, adicionarEnvio } = useCaminhoes();
+  const { caminhoes, adicionarEnvio, recarregar } = useCaminhoes();
 
   const [caminhaoSelecionado, setCaminhaoSelecionado] = useState(null);
   const [obraSelecionada, setObraSelecionada] = useState(null);
 
-  // Valida selecao, publica no MQTT, registra o envio no contexto e limpa o formulario
+  // A frota cadastrada substitui a lista fixa de '4' e '5' que existia aqui
+  const [frota, setFrota] = useState([]);
+
+  const carregarFrota = useCallback(async () => {
+    try {
+      setFrota(await buscarFrota());
+    } catch (falha) {
+      console.warn('[EnviarCaminhao]', falha.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Recarrega ao voltar da tela de frota, para um caminhao recem-cadastrado
+    // ja aparecer aqui
+    const remover = navigation.addListener('focus', carregarFrota);
+    return remover;
+  }, [navigation, carregarFrota]);
+
+  // ── VOLUME DESCARREGADO ──
+  // O valor vem do sensor do caminhao. Enquanto o hardware nao esta integrado,
+  // e informado aqui — o caminho ate o banco e o mesmo nos dois casos.
+  const [envioEmMedicao, setEnvioEmMedicao] = useState(null);
+  const [volumeTexto, setVolumeTexto]       = useState('');
+  const [salvandoVolume, setSalvandoVolume] = useState(false);
+
+  function abrirVolume(envio) {
+    setEnvioEmMedicao(envio);
+    setVolumeTexto(envio.volumeEntregue !== null ? String(envio.volumeEntregue) : '');
+  }
+
+  async function confirmarVolume() {
+    const volume = parseFloat(volumeTexto.replace(',', '.'));
+
+    if (!volume || volume <= 0) {
+      Alert.alert('Volume inválido', 'Informe quantos m³ o caminhão descarregou.');
+      return;
+    }
+    if (salvandoVolume) return;
+
+    setSalvandoVolume(true);
+    try {
+      await registrarVolumeEntregue(envioEmMedicao.id, volume);
+      await recarregar();
+      setEnvioEmMedicao(null);
+    } catch (falha) {
+      Alert.alert('Erro', falha.message);
+    } finally {
+      setSalvandoVolume(false);
+    }
+  }
+
+  // Valida a selecao, registra o envio no banco e limpa o formulario
   async function handleEnviar() {
     if (!caminhaoSelecionado) {
       Alert.alert('Erro', 'Selecione um caminhão.');
@@ -58,13 +109,8 @@ export default function EnviarCaminhaoScreen({ navigation }) {
     }
 
     try {
-      await publicarEnvioCaminhao({
-        caminhao: caminhaoSelecionado,
-        obraId: obra.id,
-        obraNome: obra.nome,
-      });
+      await adicionarEnvio(caminhaoSelecionado, obra);
 
-      adicionarEnvio(caminhaoSelecionado, obra);
       Alert.alert('Sucesso', `Caminhão ${caminhaoSelecionado} enviado para ${obra.nome}!`);
 
       setCaminhaoSelecionado(null);
@@ -72,12 +118,7 @@ export default function EnviarCaminhaoScreen({ navigation }) {
 
     } catch (erro) {
       console.error('[EnviarCaminhao] Erro:', erro.message);
-      Alert.alert('Aviso', 'Enviado localmente, mas houve erro ao publicar no servidor.');
-
-      // Salva local mesmo com erro no MQTT
-      adicionarEnvio(caminhaoSelecionado, obra);
-      setCaminhaoSelecionado(null);
-      setObraSelecionada(null);
+      Alert.alert('Erro', erro.message);
     }
   }
 
@@ -116,22 +157,51 @@ export default function EnviarCaminhaoScreen({ navigation }) {
         <View style={styles.secao}>
           <Text style={styles.secaoTitulo}>Selecione o Caminhão</Text>
 
-          <View style={styles.caminhoesRow}>
-            {CAMINHOES.map((letra) => {
-              const selecionado = caminhaoSelecionado === letra;
-              return (
-                <TouchableOpacity
-                  key={letra}
-                  style={[styles.botaoCaminhao, selecionado && styles.botaoCaminhaoSelecionado]}
-                  onPress={() => setCaminhaoSelecionado(letra)}
-                  activeOpacity={0.85}
-                >
-                  <MaterialCommunityIcons name="truck" size={26} color="#fff" />
-                  <Text style={styles.botaoCaminhaoTexto}>Caminhão {letra}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {frota.length === 0 ? (
+            <TouchableOpacity
+              style={styles.frotaVazia}
+              onPress={() => navigation.navigate('Frota')}
+              activeOpacity={0.85}
+            >
+              <MaterialCommunityIcons
+                name="truck-outline"
+                size={32}
+                color="rgba(255,255,255,0.4)"
+              />
+              <Text style={styles.frotaVaziaTexto}>
+                Nenhum caminhão na frota.{'\n'}Toque para cadastrar.
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.caminhoesRow}>
+              {frota.map((caminhao) => {
+                const selecionado = caminhaoSelecionado === caminhao.identificacao;
+                return (
+                  <TouchableOpacity
+                    key={caminhao.id}
+                    style={[styles.botaoCaminhao, selecionado && styles.botaoCaminhaoSelecionado]}
+                    onPress={() => setCaminhaoSelecionado(caminhao.identificacao)}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name="truck" size={26} color="#fff" />
+                    <Text style={styles.botaoCaminhaoTexto}>
+                      Caminhão {caminhao.identificacao}
+                    </Text>
+                    {/* Placa e capacidade ajudam a escolher a betoneira certa
+                        quando a frota cresce */}
+                    {!!caminhao.placa && (
+                      <Text style={styles.botaoCaminhaoDetalhe}>{caminhao.placa}</Text>
+                    )}
+                    {!!caminhao.capacidadeM3 && (
+                      <Text style={styles.botaoCaminhaoDetalhe}>
+                        {caminhao.capacidadeM3} m³
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* ── SELECAO DE OBRA ── */}
@@ -172,33 +242,111 @@ export default function EnviarCaminhaoScreen({ navigation }) {
           {caminhoes.length === 0 ? (
             <Text style={styles.listaVaziaTexto}>Nenhum caminhão enviado ainda.</Text>
           ) : (
-            caminhoes.slice().reverse().map((envio) => (
-              <View key={envio.id} style={styles.cardEnvio}>
-                <View style={styles.cardEnvioLinha}>
-                  <MaterialCommunityIcons name="truck" size={20} color="#22C55E" />
-                  <Text style={styles.cardEnvioTexto}>Caminhão {envio.caminhao}</Text>
-                </View>
+            caminhoes.map((envio) => {
+              const descarregou = envio.volumeEntregue !== null;
 
-                <View style={styles.cardEnvioLinha}>
-                  <Ionicons name="business-outline" size={17} color="rgba(255,255,255,0.7)" />
-                  <Text style={styles.cardEnvioSubtexto}>{envio.obraNome}</Text>
-                </View>
+              return (
+                <TouchableOpacity
+                  key={envio.id}
+                  style={styles.cardEnvio}
+                  onPress={() => abrirVolume(envio)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.cardEnvioLinha}>
+                    <MaterialCommunityIcons name="truck" size={20} color="#22C55E" />
+                    <Text style={styles.cardEnvioTexto}>Caminhão {envio.caminhao}</Text>
+                  </View>
 
-                <View style={styles.cardEnvioLinha}>
-                  <Ionicons name="calendar-outline" size={16} color="rgba(255,255,255,0.5)" />
-                  <Text style={styles.cardEnvioSubtexto}>{formatarDataHora(envio.dataEnvio)}</Text>
-                </View>
+                  <View style={styles.cardEnvioLinha}>
+                    <Ionicons name="business-outline" size={17} color="rgba(255,255,255,0.7)" />
+                    <Text style={styles.cardEnvioSubtexto}>{envio.obraNome}</Text>
+                  </View>
 
-                <View style={styles.statusBadge}>
-                  <View style={styles.statusBolinha} />
-                  <Text style={styles.statusTexto}>{envio.status}</Text>
-                </View>
-              </View>
-            ))
+                  <View style={styles.cardEnvioLinha}>
+                    <Ionicons name="calendar-outline" size={16} color="rgba(255,255,255,0.5)" />
+                    <Text style={styles.cardEnvioSubtexto}>{formatarDataHora(envio.dataEnvio)}</Text>
+                  </View>
+
+                  {/* O status vem do volume: enquanto o sensor nao mediu a
+                      descarga, a viagem ainda esta em curso */}
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      descarregou && { backgroundColor: 'rgba(34,197,94,0.2)' },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.statusBolinha,
+                        { backgroundColor: descarregou ? '#22C55E' : '#FACC15' },
+                      ]}
+                    />
+                    <Text style={styles.statusTexto}>
+                      {descarregou
+                        ? `Descarregou ${envio.volumeEntregue} m³`
+                        : 'Em trânsito · toque para medir'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
 
       </ScrollView>
+
+      {/* ── MODAL: VOLUME DESCARREGADO ── */}
+      <Modal
+        visible={envioEmMedicao !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEnvioEmMedicao(null)}
+      >
+        <View style={styles.modalFundo}>
+          {envioEmMedicao && (
+            <View style={styles.modalCaixa}>
+              <Text style={styles.modalTitulo}>Caminhão {envioEmMedicao.caminhao}</Text>
+              <Text style={styles.modalSubtitulo}>{envioEmMedicao.obraNome}</Text>
+
+              <Text style={styles.modalLabel}>Volume descarregado</Text>
+              <View style={styles.modalCampo}>
+                <TextInput
+                  style={styles.modalInput}
+                  value={volumeTexto}
+                  onChangeText={setVolumeTexto}
+                  placeholder="Ex: 7,4"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  keyboardType="decimal-pad"
+                  autoFocus
+                />
+                <Text style={styles.modalSufixo}>m³</Text>
+              </View>
+              <Text style={styles.modalAjuda}>
+                Virá do sensor do caminhão quando o hardware estiver integrado.
+              </Text>
+
+              <View style={styles.modalBotoes}>
+                <TouchableOpacity
+                  style={styles.modalBotaoCancelar}
+                  onPress={() => setEnvioEmMedicao(null)}
+                >
+                  <Text style={styles.modalBotaoCancelarTexto}>Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalBotaoConfirmar, salvandoVolume && { opacity: 0.7 }]}
+                  onPress={confirmarVolume}
+                  disabled={salvandoVolume}
+                >
+                  <Text style={styles.modalBotaoConfirmarTexto}>
+                    {salvandoVolume ? 'Salvando...' : 'Registrar'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -357,6 +505,87 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+
+  // ── MODAL DE VOLUME ──
+  modalFundo: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+
+  modalCaixa: {
+    width: '100%',
+    backgroundColor: '#0B2065',
+    borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.4)',
+    borderRadius: 18, padding: 22,
+  },
+
+  modalTitulo: {
+    color: '#fff', fontSize: 20, fontWeight: 'bold', textAlign: 'center',
+  },
+
+  modalSubtitulo: {
+    color: 'rgba(255,255,255,0.5)', fontSize: 12.5,
+    textAlign: 'center', marginTop: 3,
+  },
+
+  modalLabel: {
+    color: 'rgba(255,255,255,0.6)', fontSize: 12,
+    fontWeight: 'bold', letterSpacing: 0.5,
+    marginTop: 22, marginBottom: 8,
+  },
+
+  modalCampo: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderColor: '#2ECC40', borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    paddingHorizontal: 14, height: 52,
+  },
+
+  modalInput: { flex: 1, color: '#fff', fontSize: 16 },
+
+  modalSufixo: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: 'bold' },
+
+  modalAjuda: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 11,
+    marginTop: 8, lineHeight: 16,
+  },
+
+  modalBotoes: { flexDirection: 'row', gap: 10, marginTop: 22 },
+
+  modalBotaoCancelar: {
+    flex: 1, height: 48, borderRadius: 12,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  modalBotaoCancelarTexto: {
+    color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: 'bold',
+  },
+
+  modalBotaoConfirmar: {
+    flex: 1, height: 48, borderRadius: 12, backgroundColor: '#22C55E',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  modalBotaoConfirmarTexto: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+
+  // ── FROTA VAZIA ──
+  frotaVazia: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 28, paddingHorizontal: 20,
+    borderWidth: 1.5, borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 16,
+  },
+
+  frotaVaziaTexto: {
+    color: 'rgba(255,255,255,0.5)', fontSize: 13,
+    textAlign: 'center', lineHeight: 19, marginTop: 10,
+  },
+
+  botaoCaminhaoDetalhe: {
+    color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2,
   },
 
   // ── LISTA DE CAMINHOES ENVIADOS ──

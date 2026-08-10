@@ -28,6 +28,7 @@ import MenuConstrutoraScreen from '../screens/MenuConstrutoraScreen';
 
 // ── TELAS DO MENU DA CONSTRUTORA (placeholders) ──
 import EnviarCaminhaoScreen from '../screens/EnviarCaminhaoScreen';
+import FrotaScreen from '../screens/FrotaScreen';
 import HistoricoEntregasScreen from '../screens/HistoricoEntregasScreen';
 import MonitorarTemperaturaScreen from '../screens/MonitorarTemperaturaScreen';
 
@@ -77,6 +78,7 @@ export default function AppNavigator() {
 
         {/* ── TELAS DO MENU DA CONSTRUTORA (placeholders) ── */}
         <Stack.Screen name="EnviarCaminhao"        component={EnviarCaminhaoScreen} />
+        <Stack.Screen name="Frota"                 component={FrotaScreen} />
         <Stack.Screen name="HistoricoEntregas"     component={HistoricoEntregasScreen} />
         <Stack.Screen name="MonitorarTemperatura"  component={MonitorarTemperaturaScreen} />
 

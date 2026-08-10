@@ -34,6 +34,36 @@ export async function salvarLeitura(obraId, temperatura) {
 const JANELA_CURTA_MS = 2 * 60 * 60 * 1000; // 2 horas
 
 // ─────────────────────────────────────────────────────────────
+// ULTIMA LEITURA REGISTRADA DE UMA OBRA
+// E o que a tela de temperatura mostra como "valor atual". Enquanto o sensor
+// publicava por MQTT, o valor chegava sozinho; agora a tela pergunta ao banco,
+// que e alimentado por quem estiver gravando as leituras.
+//
+// Retorna null quando a obra ainda nao tem leitura — nao e erro.
+// ─────────────────────────────────────────────────────────────
+export async function buscarUltimaLeitura(obraId) {
+  const { data, error } = await supabase
+    .from('leituras_temperatura')
+    .select('temperatura, medido_em')
+    .eq('id_obra', String(obraId))
+    .order('medido_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Historico] Erro ao buscar ultima leitura:', error.message);
+    throw new Error('Não foi possível carregar a temperatura.');
+  }
+
+  if (!data) return null;
+
+  return {
+    temperatura: Number(data.temperatura),
+    medidoEm: data.medido_em,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // AGRUPAR LEITURAS
 // O sensor publica em intervalos irregulares — varias leituras por minuto.
 // Mostrar cada uma deixaria o grafico ilegivel, entao elas sao agrupadas

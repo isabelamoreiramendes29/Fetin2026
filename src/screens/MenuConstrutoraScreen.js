@@ -27,6 +27,13 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
   // Cada item define: icone, familia do icone, texto exibido e a tela de destino
   const itensMenu = [
     {
+      id: 'frota',
+      icone: 'truck-outline',
+      tipoIcone: 'MaterialCommunityIcons',
+      texto: 'Minha Frota',
+      tela: 'Frota',
+    },
+    {
       id: 'enviar-caminhao',
       icone: 'truck',
       tipoIcone: 'MaterialCommunityIcons',
@@ -66,9 +73,8 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
   ];
 
   // Navega para a tela do item clicado, sempre passando obraId e obraNome —
-  // igual ao MenuMestre. As telas da Construtora ainda nao leem esses dados,
-  // mas Monitorar Temperatura vai precisar do obraId para filtrar as leituras
-  // da obra certa (ver inscreverTemperatura em services/mqtt.js).
+  // igual ao MenuMestre. Monitorar Temperatura precisa do obraId para saber
+  // de qual obra ler as leituras.
   function handleNavegar(tela) {
     navigation.navigate(tela, { obraId, obraNome });
   }

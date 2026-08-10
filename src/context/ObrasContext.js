@@ -1,65 +1,78 @@
-// Context API — gerencia o estado global das obras do usuario
-// Qualquer tela do app pode acessar e modificar a lista de obras usando useObras()
+// Context API — estado global das obras
+//
+// As obras vem do Supabase (ver services/obras.js), nao mais do MQTT. O
+// Context continua existindo porque varias telas precisam da mesma lista:
+// SelecionarObra, SelecionarObraConstrutora e o cadastro. Sem ele, cada uma
+// faria a propria consulta e elas poderiam divergir.
+//
+// A lista se recarrega sozinha quando o usuario entra ou sai da conta. Isso e
+// necessario porque as policies do banco filtram por quem esta perguntando:
+// antes do login nao ha o que carregar, e depois de trocar de conta a lista
+// anterior nao vale mais.
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { inscreverListaObras } from '../services/mqtt';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { buscarObras, criarObra, removerObra as removerObraNoBanco } from '../services/obras';
+import { supabase } from '../services/supabase';
 
-// Cria o contexto vazio
 const ObrasContext = createContext();
 
-// Dados iniciais de exemplo — sera substituido por dados reais do backend futuramente
-const obrasIniciais = [
-  {
-    id: '1',
-    nome: 'Obra 1',
-    cep: '01310-100',
-    endereco: 'Av. Paulista, Bela Vista, São Paulo, SP',
-    numero: '1000',
-    complemento: 'Bloco A',
-    dataInicio: '01/01/2025',
-    dataTermino: '31/12/2025',
-    volumeCimento: '500',
-    unidadeCimento: 'Sacos',
-    contratante: 'Construtora Exemplo',
-    responsavelTecnico: 'Eng. João Silva',
-  },
-];
-
-// Provider — envolve o app inteiro e disponibiliza os dados para todas as telas
 export function ObrasProvider({ children }) {
-  const [obras, setObras] = useState(obrasIniciais);
+  const [obras, setObras]           = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro]             = useState(null);
 
-  // Inscreve no topico obras/resposta ao abrir o app — o backend publica a
-  // lista completa de obras, que substitui o estado local
-  useEffect(() => {
-    console.log('[ObrasContext] Iniciando inscrição MQTT');
+  const recarregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
 
-    const desinscrever = inscreverListaObras((listaObras) => {
-      console.log('[ObrasContext] Atualizando obras com lista recebida');
-      setObras(listaObras);
-    });
-
-    return () => {
-      if (desinscrever) desinscrever();
-    };
+    try {
+      setObras(await buscarObras());
+    } catch (falha) {
+      console.warn('[ObrasContext]', falha.message);
+      setErro(falha.message);
+      setObras([]);
+    } finally {
+      setCarregando(false);
+    }
   }, []);
 
-  // Adiciona uma nova obra na lista
-  function adicionarObra(novaObra) {
-    const obra = {
-      id: String(Date.now()), // gera um id unico baseado no tempo
-      ...novaObra,
-    };
-    setObras(prev => [...prev, obra]);
+  // Recarrega ao entrar e limpa ao sair. O onAuthStateChange dispara tambem na
+  // abertura do app, quando a sessao guardada no aparelho e restaurada.
+  useEffect(() => {
+    recarregar();
+
+    const { data: assinatura } = supabase.auth.onAuthStateChange((evento) => {
+      console.log('[ObrasContext] Sessao mudou:', evento);
+
+      if (evento === 'SIGNED_OUT') {
+        setObras([]);
+        return;
+      }
+
+      if (evento === 'SIGNED_IN' || evento === 'TOKEN_REFRESHED') {
+        recarregar();
+      }
+    });
+
+    return () => assinatura.subscription.unsubscribe();
+  }, [recarregar]);
+
+  // Cadastra no banco e insere no topo da lista, sem precisar reconsultar
+  async function adicionarObra(dados) {
+    const nova = await criarObra(dados);
+    setObras((atuais) => [nova, ...atuais]);
+    return nova;
   }
 
-  // Remove uma obra pelo id
-  function removerObra(id) {
-    setObras(prev => prev.filter(obra => obra.id !== id));
+  async function removerObra(id) {
+    await removerObraNoBanco(id);
+    setObras((atuais) => atuais.filter((obra) => obra.id !== id));
   }
 
   return (
-    <ObrasContext.Provider value={{ obras, adicionarObra, removerObra }}>
+    <ObrasContext.Provider
+      value={{ obras, carregando, erro, recarregar, adicionarObra, removerObra }}
+    >
       {children}
     </ObrasContext.Provider>
   );

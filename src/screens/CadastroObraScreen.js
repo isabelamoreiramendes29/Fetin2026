@@ -20,7 +20,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import InputCampo from '../components/InputCampo';
 import SecaoTitulo from '../components/SecaoTitulo';
 import { useObras } from '../context/ObrasContext';
-import { publicarCadastroObra } from '../services/mqtt';
 
 export default function CadastroObraScreen({ navigation }) {
   const { adicionarObra } = useObras();
@@ -110,8 +109,10 @@ export default function CadastroObraScreen({ navigation }) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 
-  // Valida todos os campos, verifica os e-mails no backend,
-  // publica no MQTT e salva a obra no contexto global
+  // Valida todos os campos e cadastra a obra no Supabase.
+  // O e-mail da construtora nao e verificado contra a base de usuarios: ela
+  // pode ainda nao ter conta quando a obra e cadastrada. O vinculo passa a
+  // valer assim que ela se cadastrar com esse mesmo e-mail.
   async function handleSalvar() {
     if (!cep)          return Alert.alert('Campo obrigatorio', 'Preencha o CEP.');
     if (!endereco)     return Alert.alert('Campo obrigatorio', 'Preencha o Endereco.');
@@ -136,33 +137,14 @@ export default function CadastroObraScreen({ navigation }) {
     try {
       const nome = `Obra - ${endereco.split(',')[0]}`;
 
-      console.log('[DEBUG] Nome:', nome);
-      console.log('[DEBUG] CEP:', cep);
-      console.log('[DEBUG] Endereço:', endereco);
-      console.log('[DEBUG] Número:', numero);
-      console.log('[DEBUG] Data Início:', dataInicio);
-      console.log('[DEBUG] Data Término:', dataTermino);
-      console.log('[DEBUG] Volume:', volumeCimento);
-      console.log('[DEBUG] Email Construtora:', emailConstrutora);
-
-      // Tenta publicar no MQTT — melhor esforco, nao bloqueia o cadastro local
-      try {
-        await publicarCadastroObra({
-          nome, cep, endereco, numero,
-          dataInicio: dataInicio.toISOString().split('T')[0],
-          dataTermino: dataTermino.toISOString().split('T')[0],
-          volumeCimento,
-          emailConstrutora,
-        });
-      } catch (erro) {
-        console.log('[CadastroObra] Erro no MQTT:', erro.message);
-      }
-
-      adicionarObra({
+      // As datas vao como objeto Date; o servico converte para o formato do banco
+      await adicionarObra({
         nome,
-        cep, endereco, numero,
-        dataInicio: formatarData(dataInicio),
-        dataTermino: formatarData(dataTermino),
+        cep,
+        endereco,
+        numero,
+        dataInicio,
+        dataTermino,
         volumeCimento,
         emailConstrutora,
       });
@@ -173,7 +155,7 @@ export default function CadastroObraScreen({ navigation }) {
 
     } catch (erro) {
       console.error('[CadastroObra] Erro ao salvar cadastro:', erro.message);
-      Alert.alert('Erro', 'Nao foi possivel salvar a obra. Tente novamente.');
+      Alert.alert('Erro', erro.message);
     } finally {
       setCarregando(false);
     }

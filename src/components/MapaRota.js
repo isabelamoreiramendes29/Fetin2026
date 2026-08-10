@@ -1,19 +1,26 @@
-// Mapa de rota — mapa real com a rota do caminhao desenhada por cima
+// Mapa de rota — mapa real com os caminhoes a caminho da obra
 //
 // Substitui o desenho em SVG que existia antes: aquele era uma ilustracao com
 // ruas fixas, sem relacao nenhuma com o endereco da obra. Aqui o mapa e o do
 // proprio aparelho (Apple Maps no iOS, Google Maps no Android) e as coordenadas
 // sao reais.
 //
-// O que ainda e simulado e a POSICAO do caminhao: ela vem do parametro
-// progresso (0 a 100), interpolada ao longo da rota. Quando o modulo GPS
-// comecar a publicar no MQTT, basta trocar quem alimenta esse valor — o
-// desenho do mapa nao muda.
+// Mostra VARIOS caminhoes: uma concretagem usa mais de uma betoneira, e essa e
+// a premissa do Mapa de Concretagem, onde cada area registra qual caminhao a
+// concretou.
+//
+// O que ainda e simulado e a posicao: ela vem do progresso (0 a 100) de cada
+// caminhao, interpolado ao longo da rota. Quando o modulo GPS comecar a
+// publicar, basta trocar quem alimenta esses valores.
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
+// Reaproveita a cor que o Mapa de Concretagem usa: o mesmo caminhao recebe a
+// mesma cor nas duas telas, o que ajuda a ligar "quem estava vindo" com "quem
+// concretou qual area"
+import { corDoCaminhao } from '../services/planta';
 
 const RAIO_TERRA_KM = 6371;
 
@@ -39,9 +46,8 @@ export function comprimentoRota(rota) {
   return total;
 }
 
-// Posicao do caminhao em `progresso`% do caminho.
-// Interpola entre os dois pontos do trecho correspondente — o mesmo criterio
-// que a versao em SVG usava, agora em latitude/longitude.
+// Posicao em `progresso`% do caminho, interpolada entre os dois pontos do
+// trecho correspondente
 export function posicaoNaRota(rota, progresso) {
   const t = Math.min(Math.max(progresso, 0), 100) / 100;
   const trechos = rota.length - 1;
@@ -58,8 +64,7 @@ export function posicaoNaRota(rota, progresso) {
   };
 }
 
-// Regiao que enquadra a rota inteira, com uma folga nas bordas para os
-// marcadores nao ficarem colados no limite da tela
+// Regiao que enquadra a rota inteira, com folga nas bordas
 function regiaoDaRota(rota) {
   const lats = rota.map((p) => p.latitude);
   const lons = rota.map((p) => p.longitude);
@@ -79,13 +84,13 @@ function regiaoDaRota(rota) {
 
 export default function MapaRota({
   rota,
-  progresso = 0,
+  caminhoes = [],
   nomeOrigem = 'Origem',
   nomeDestino = 'Destino',
+  destaque = null,
   altura = 280,
 }) {
   const regiaoInicial = useMemo(() => regiaoDaRota(rota), [rota]);
-  const posicaoCaminhao = posicaoNaRota(rota, progresso);
 
   const origem = rota[0];
   const destino = rota[rota.length - 1];
@@ -117,26 +122,50 @@ export default function MapaRota({
           </View>
         </Marker>
 
-        {/* Caminhao — redesenhado a cada mudanca de progresso */}
-        <Marker
-          coordinate={posicaoCaminhao}
-          title="Caminhão"
-          anchor={{ x: 0.5, y: 0.5 }}
-          // Sem isso o marcador so reposiciona ao mexer no mapa, no Android
-          tracksViewChanges={false}
-          key={`caminhao-${Math.round(progresso)}`}
-        >
-          <View style={styles.pinoCaminhao}>
-            <Ionicons name="car" size={16} color="#fff" />
-          </View>
-        </Marker>
+        {caminhoes.map((item) => {
+          const cor = corDoCaminhao(item.caminhao);
+          const selecionado = destaque === item.caminhao;
+
+          return (
+            <Marker
+              // O progresso entra na key de proposito: no Android, com
+              // tracksViewChanges desligado, o marcador so reposicionaria ao
+              // mexer no mapa. Mudar a key forca o redesenho a cada avanco.
+              key={`${item.caminhao}-${Math.round(item.progresso)}`}
+              coordinate={posicaoNaRota(rota, item.progresso)}
+              title={`Caminhão ${item.caminhao}`}
+              description={`${Math.round(item.progresso)}% do trajeto`}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
+            >
+              <View
+                style={[
+                  styles.pinoCaminhao,
+                  { backgroundColor: cor },
+                  selecionado && styles.pinoSelecionado,
+                ]}
+              >
+                <Text style={styles.pinoTexto}>{item.caminhao}</Text>
+              </View>
+            </Marker>
+          );
+        })}
 
       </MapView>
 
-      {/* Badge de progresso, sobreposto ao mapa */}
-      <View style={styles.badge}>
-        <Text style={styles.badgeTexto}>{Math.round(progresso)}%</Text>
-      </View>
+      {/* Progresso de cada caminhao, sobreposto ao mapa */}
+      {caminhoes.length > 0 && (
+        <View style={styles.painel}>
+          {caminhoes.map((item) => (
+            <View key={item.caminhao} style={styles.painelLinha}>
+              <View style={[styles.painelPonto, { backgroundColor: corDoCaminhao(item.caminhao) }]} />
+              <Text style={styles.painelTexto}>
+                {item.caminhao} · {Math.round(item.progresso)}%
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -159,22 +188,31 @@ const styles = StyleSheet.create({
   pinoDestino: { backgroundColor: '#16A34A' },
 
   pinoCaminhao: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#22C55E',
+    minWidth: 32, height: 32, borderRadius: 16,
+    paddingHorizontal: 6,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#fff',
+    borderWidth: 2.5, borderColor: '#fff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4, shadowRadius: 4, elevation: 6,
   },
 
-  badge: {
+  // Quem a construtora esta dirigindo agora ganha um anel mais grosso
+  pinoSelecionado: { borderWidth: 4, borderColor: '#FACC15' },
+
+  pinoTexto: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+
+  painel: {
     position: 'absolute', top: 10, right: 10,
-    paddingHorizontal: 12, paddingVertical: 5,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderWidth: 1, borderColor: '#22C55E',
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    gap: 4,
   },
 
-  badgeTexto: { color: '#22C55E', fontSize: 12, fontWeight: 'bold' },
+  painelLinha: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+
+  painelPonto: { width: 8, height: 8, borderRadius: 4 },
+
+  painelTexto: { color: '#fff', fontSize: 11, fontWeight: '600' },
 });

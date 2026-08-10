@@ -1,36 +1,70 @@
-// Context API — gerencia o estado global dos caminhoes enviados pela Construtora
-// Etapa 1: apenas local (sem MQTT ainda). Qualquer tela pode acessar via useCaminhoes()
+// Context API — estado global dos envios de caminhao
+//
+// Os envios vem do Supabase (ver services/caminhoes.js), nao mais do MQTT nem
+// da memoria. Antes o historico inteiro sumia ao fechar o app.
+//
+// Recarrega quando o usuario entra ou sai da conta, pelo mesmo motivo do
+// ObrasContext: as policies filtram por quem esta perguntando.
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  buscarEnvios,
+  registrarEnvio,
+  removerEnvio as removerEnvioNoBanco,
+} from '../services/caminhoes';
+import { supabase } from '../services/supabase';
 
-// Cria o contexto vazio
 const CaminhoesContext = createContext();
 
-// Provider — envolve o app inteiro e disponibiliza os dados para todas as telas
 export function CaminhoesProvider({ children }) {
-  const [caminhoes, setCaminhoes] = useState([]);
+  const [caminhoes, setCaminhoes]   = useState([]);
+  const [carregando, setCarregando] = useState(true);
 
-  // Registra o envio de um caminhao (X ou Y) para uma obra
-  function adicionarEnvio(caminhao, obra) {
-    const novoEnvio = {
-      id: Date.now().toString(),
-      caminhao,               // 'X' ou 'Y'
-      obraId: obra.id,
-      obraNome: obra.nome,
-      dataEnvio: new Date().toISOString(),
-      status: 'Em trânsito',
-    };
-    setCaminhoes(prev => [...prev, novoEnvio]);
-    console.log('[Caminhoes] Novo envio:', novoEnvio);
+  const recarregar = useCallback(async () => {
+    setCarregando(true);
+
+    try {
+      setCaminhoes(await buscarEnvios());
+    } catch (falha) {
+      console.warn('[CaminhoesContext]', falha.message);
+      setCaminhoes([]);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    recarregar();
+
+    const { data: assinatura } = supabase.auth.onAuthStateChange((evento) => {
+      if (evento === 'SIGNED_OUT') {
+        setCaminhoes([]);
+        return;
+      }
+      if (evento === 'SIGNED_IN' || evento === 'TOKEN_REFRESHED') {
+        recarregar();
+      }
+    });
+
+    return () => assinatura.subscription.unsubscribe();
+  }, [recarregar]);
+
+  // Registra o despacho de um caminhao para uma obra
+  async function adicionarEnvio(caminhao, obra) {
+    const novo = await registrarEnvio(obra.id, caminhao);
+    setCaminhoes((atuais) => [novo, ...atuais]);
+    return novo;
   }
 
-  // Remove um envio pelo id
-  function removerEnvio(id) {
-    setCaminhoes(prev => prev.filter(c => c.id !== id));
+  async function removerEnvio(id) {
+    await removerEnvioNoBanco(id);
+    setCaminhoes((atuais) => atuais.filter((c) => c.id !== id));
   }
 
   return (
-    <CaminhoesContext.Provider value={{ caminhoes, adicionarEnvio, removerEnvio }}>
+    <CaminhoesContext.Provider
+      value={{ caminhoes, carregando, recarregar, adicionarEnvio, removerEnvio }}
+    >
       {children}
     </CaminhoesContext.Provider>
   );

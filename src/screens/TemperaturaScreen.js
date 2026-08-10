@@ -1,8 +1,16 @@
 // Tela de Temperatura — exibe o velocimetro com a temperatura atual do cimento
 // Fluxo: SelecionarObra → MenuObra → Temperatura (esta tela)
 // Recebe obraId e obraNome via route.params
+//
+// O valor exibido e a ULTIMA LEITURA GRAVADA da obra, consultada no banco.
+// Enquanto o sensor publicava por MQTT, ele chegava sozinho pelo broker; a
+// integracao sera refeita quando o hardware estiver disponivel. Quando voltar,
+// o sensor passa a gravar na mesma tabela e esta tela nao muda.
+//
+// Os botoes de simulacao gravam uma leitura de verdade — e o que permite
+// demonstrar a tela e alimentar o Historico sem o sensor ligado.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,8 +23,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import VelocimetroTemperatura from '../components/VelocimetroTemperatura';
-import { inscreverTemperatura } from '../services/mqtt';
-import { salvarLeitura } from '../services/historico';
+import { salvarLeitura, buscarUltimaLeitura } from '../services/historico';
+import { buscarCompras } from '../services/financeiro';
+import { totalEntregue } from '../services/caminhoes';
+import { useObras } from '../context/ObrasContext';
+import { useCaminhoes } from '../context/CaminhoesContext';
+
+// De quanto em quanto tempo a tela reconsulta a ultima leitura
+const INTERVALO_CONSULTA_MS = 5000;
 
 const { width } = Dimensions.get('window');
 
@@ -70,75 +84,132 @@ function formatarDigitos(temp) {
   return String(Math.round(temp)).padStart(3, '0').split('');
 }
 
+// Ha quanto tempo a leitura foi feita. Importa porque um valor de tres horas
+// atras nao diz nada sobre o concreto que esta chegando agora.
+function formatarQuando(iso) {
+  const minutos = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+
+  if (minutos < 1)  return 'agora mesmo';
+  if (minutos < 60) return `há ${minutos} min`;
+
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24)   return `há ${horas} h`;
+
+  return new Date(iso).toLocaleDateString('pt-BR');
+}
+
 // ── COMPONENTE PRINCIPAL ──
 export default function TemperaturaScreen({ navigation, route }) {
   const { obraId, obraNome } = route.params;
 
-  // Temperatura inicial simulada em 75°C (zona NORMAL)
+  // 75 °C (zona NORMAL) e so o valor mostrado ate a primeira consulta voltar
   const [temperatura, setTemperatura] = useState(75);
 
-  // Indica se ja chegou alguma leitura real via MQTT
-  const [conectado, setConectado] = useState(false);
+  // Quando a leitura exibida foi medida. null = a obra ainda nao tem leitura.
+  const [medidoEm, setMedidoEm] = useState(null);
 
-  // Inscreve no topico de temperatura ao montar a tela, desinscreve ao desmontar
-  // Filtra pela obra atual — so atualiza quando obra_id bate com obraId
+  // Fontes dos tres volumes: a obra traz o planejado, as compras trazem o
+  // comprado, e os envios trazem o que o sensor mediu na descarga
+  const { obras } = useObras();
+  const { caminhoes } = useCaminhoes();
+  const [compras, setCompras] = useState([]);
+
   useEffect(() => {
+    if (!obraId) return;
+    buscarCompras(obraId)
+      .then(setCompras)
+      .catch((falha) => console.warn('[Temperatura] Compras:', falha.message));
+  }, [obraId]);
+
+  // Busca a ultima leitura gravada da obra
+  const carregar = useCallback(async () => {
     if (!obraId) {
       console.warn('[Temperatura] Nenhuma obra selecionada!');
       return;
     }
 
-    console.log(`🔵 [Temperatura] Inscrevendo para obra ${obraId}`);
+    try {
+      const ultima = await buscarUltimaLeitura(obraId);
+      if (!ultima) return;
 
-    const desinscrever = inscreverTemperatura(obraId, (novaTemperatura) => {
-      console.log(`🌡️🌡️🌡️ [Temperatura] CALLBACK CHAMADO com valor: ${novaTemperatura}`);
-      setTemperatura(novaTemperatura);
-      setConectado(true);
-
-      // Grava a leitura para alimentar a tela de Historico. Sem isto o valor
-      // so existiria enquanto esta tela estivesse aberta — MQTT nao guarda nada.
-      // Nao usa await: a exibicao ao vivo nao espera o banco.
-      salvarLeitura(obraId, novaTemperatura);
-    });
-
-    return () => {
-      if (desinscrever) desinscrever();
-      setConectado(false);
-    };
+      setTemperatura(ultima.temperatura);
+      setMedidoEm(ultima.medidoEm);
+    } catch (falha) {
+      console.warn('[Temperatura]', falha.message);
+    }
   }, [obraId]);
 
-  // Volume de cimento
-  const volumePlanejado = 100;
-  const unidadeCimento  = 'sacos';
-  const [volumeMedido, setVolumeMedido] = useState(85);
+  // Consulta ao abrir e periodicamente: quem grava as leituras e outro
+  // processo, entao a tela precisa perguntar de tempos em tempos
+  useEffect(() => {
+    carregar();
+    const intervalo = setInterval(carregar, INTERVALO_CONSULTA_MS);
+    return () => clearInterval(intervalo);
+  }, [carregar]);
+
+  // Botao de simulacao: grava uma leitura de verdade, para a tela e o Historico
+  // se comportarem exatamente como se comportarao com o sensor ligado
+  async function simularLeitura(valor) {
+    setTemperatura(valor);
+    setMedidoEm(new Date().toISOString());
+    await salvarLeitura(obraId, valor);
+  }
 
   // Derivados da temperatura atual
   const zonaAtual = obterZona(temperatura);
   const digitos   = formatarDigitos(temperatura);
 
-  // ── DERIVADOS DO VOLUME ──
-  const diffVolume        = volumeMedido - volumePlanejado;
-  const porcentagemVolume = Math.round((volumeMedido / volumePlanejado) * 100);
-  const larguraBarra      = Math.min(volumeMedido / volumePlanejado, 1);
-  let corVolume, statusVolume, iconeVolume, detalhesVolume;
-  if (Math.abs(diffVolume) <= volumePlanejado * 0.02) {
-    corVolume      = '#22C55E';
-    statusVolume   = 'No planejado';
-    iconeVolume    = 'checkmark-circle';
-    detalhesVolume = 'Volume dentro do esperado';
-  } else if (diffVolume < 0) {
-    corVolume      = '#FACC15';
-    statusVolume   = 'Abaixo do planejado';
-    iconeVolume    = 'trending-down';
-    detalhesVolume = `${Math.abs(diffVolume)} ${unidadeCimento} a menos que o planejado`;
-  } else {
-    corVolume      = '#EF4444';
-    statusVolume   = 'EXCEDIDO';
-    iconeVolume    = 'trending-up';
-    detalhesVolume = `${diffVolume} ${unidadeCimento} a mais que o planejado`;
-  }
+  // ── VOLUME DE CIMENTO ──
+  // Tres numeros que ate agora nao se falavam. Todos em m³, que e como concreto
+  // usinado se compra — antes esta tela dizia "sacos", contradizendo o proprio
+  // cadastro da obra, que sempre pediu m³.
+  const obra = obras.find((o) => o.id === String(obraId));
 
-  console.log(`🎨 [Temperatura] Renderizando com valor: ${temperatura} | zona: ${zonaAtual.nome} | cor: ${zonaAtual.cor}`);
+  const volumePlanejado = Number(obra?.volumeCimento) || 0;          // cadastro da obra
+  const volumeComprado  = compras.reduce((s, c) => s + c.volume, 0); // financeiro
+  const volumeEntregue  = totalEntregue(caminhoes, obraId);          // sensor, na descarga
+
+  // A barra mede o avanco em direcao ao que a obra precisa
+  const larguraBarra = volumePlanejado > 0
+    ? Math.min(volumeEntregue / volumePlanejado, 1)
+    : 0;
+  const porcentagemVolume = volumePlanejado > 0
+    ? Math.round((volumeEntregue / volumePlanejado) * 100)
+    : 0;
+
+  // O status compara ENTREGUE com COMPRADO — e a diferenca que custa dinheiro.
+  // Pagar por 8 m³ e receber 7,4 e o tipo de perda que passa despercebida.
+  const diferenca  = volumeEntregue - volumeComprado;
+  const tolerancia = volumeComprado * 0.02;
+
+  let corVolume, statusVolume, iconeVolume, detalhesVolume;
+
+  if (volumeComprado === 0) {
+    corVolume      = '#94A3B8';
+    statusVolume   = 'Sem compras registradas';
+    iconeVolume    = 'help-circle-outline';
+    detalhesVolume = 'Registre uma compra na tela Financeiro';
+  } else if (volumeEntregue === 0) {
+    corVolume      = '#FACC15';
+    statusVolume   = 'Nenhuma descarga medida';
+    iconeVolume    = 'time-outline';
+    detalhesVolume = `${volumeComprado.toFixed(1)} m³ comprados, aguardando entrega`;
+  } else if (Math.abs(diferenca) <= tolerancia) {
+    corVolume      = '#22C55E';
+    statusVolume   = 'Entregas conferem';
+    iconeVolume    = 'checkmark-circle';
+    detalhesVolume = 'O volume descarregado bate com o comprado';
+  } else if (diferenca < 0) {
+    corVolume      = '#EF4444';
+    statusVolume   = 'Faltou na entrega';
+    iconeVolume    = 'trending-down';
+    detalhesVolume = `${Math.abs(diferenca).toFixed(1)} m³ a menos do que foi pago`;
+  } else {
+    corVolume      = '#FACC15';
+    statusVolume   = 'Entregue acima do comprado';
+    iconeVolume    = 'trending-up';
+    detalhesVolume = `${diferenca.toFixed(1)} m³ além do registrado no Financeiro`;
+  }
 
   return (
     <LinearGradient
@@ -179,14 +250,16 @@ export default function TemperaturaScreen({ navigation, route }) {
         {/* ── NOME DA OBRA ── */}
         <Text style={styles.nomeObra}>{obraNome}</Text>
 
-        {/* ── STATUS DA CONEXAO MQTT ── */}
+        {/* ── QUANDO A LEITURA EXIBIDA FOI FEITA ── */}
         <View style={styles.statusMQTT}>
           <View style={[
             styles.bolinhaStatus,
-            { backgroundColor: conectado ? '#22C55E' : '#EF4444' }
+            { backgroundColor: medidoEm ? '#22C55E' : '#FACC15' }
           ]} />
           <Text style={styles.textoStatus}>
-            {conectado ? 'Recebendo dados em tempo real' : 'Aguardando dados do sensor'}
+            {medidoEm
+              ? `Última leitura ${formatarQuando(medidoEm)}`
+              : 'Nenhuma leitura registrada nesta obra'}
           </Text>
         </View>
 
@@ -218,7 +291,9 @@ export default function TemperaturaScreen({ navigation, route }) {
         </View>
 
         {/* ── BOTOES DE SIMULACAO ── */}
-        {/* Temporarios — serao removidos quando o MQTT for integrado na proxima etapa */}
+        {/* Gravam uma leitura de verdade, e nao so mudam o mostrador: assim a
+            tela e o Historico se comportam igual ao que farao com o sensor.
+            Saem quando o hardware estiver integrado. */}
         <View style={styles.botoesContainer}>
           {ZONAS.map((zona) => (
             <TouchableOpacity
@@ -229,7 +304,7 @@ export default function TemperaturaScreen({ navigation, route }) {
                 // Destaca o botao da zona ativa
                 temperatura === zona.tempSim && styles.botaoSimAtivo,
               ]}
-              onPress={() => setTemperatura(zona.tempSim)}
+              onPress={() => simularLeitura(zona.tempSim)}
               activeOpacity={0.75}
             >
               <Text style={styles.botaoSimNome}>{zona.nome}</Text>
@@ -268,25 +343,28 @@ export default function TemperaturaScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* Botoes de simulacao de volume */}
-          <View style={styles.botoesVolumeContainer}>
-            {[
-              { label: '-15 sacos', valor: 85  },
-              { label: '= 100 sacos', valor: 100 },
-              { label: '+10 sacos', valor: 110 },
-            ].map((btn) => (
-              <TouchableOpacity
-                key={btn.label}
-                style={[
-                  styles.botaoVolume,
-                  volumeMedido === btn.valor && styles.botaoVolumeAtivo,
-                ]}
-                onPress={() => setVolumeMedido(btn.valor)}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.botaoVolumeTxt}>{btn.label}</Text>
-              </TouchableOpacity>
-            ))}
+          {/* Os tres volumes lado a lado. Antes aqui havia botoes que mudavam
+              um numero inventado; agora cada coluna vem de uma fonte real. */}
+          <View style={styles.tresVolumes}>
+            <View style={styles.colunaVolume}>
+              <Text style={styles.colunaVolumeLabel}>PLANEJADO</Text>
+              <Text style={styles.colunaVolumeValor}>{volumePlanejado.toFixed(1)}</Text>
+              <Text style={styles.colunaVolumeUnidade}>m³</Text>
+            </View>
+
+            <View style={styles.colunaVolume}>
+              <Text style={styles.colunaVolumeLabel}>COMPRADO</Text>
+              <Text style={styles.colunaVolumeValor}>{volumeComprado.toFixed(1)}</Text>
+              <Text style={styles.colunaVolumeUnidade}>m³</Text>
+            </View>
+
+            <View style={styles.colunaVolume}>
+              <Text style={styles.colunaVolumeLabel}>ENTREGUE</Text>
+              <Text style={[styles.colunaVolumeValor, { color: corVolume }]}>
+                {volumeEntregue.toFixed(1)}
+              </Text>
+              <Text style={styles.colunaVolumeUnidade}>m³</Text>
+            </View>
           </View>
 
         </View>
@@ -298,6 +376,27 @@ export default function TemperaturaScreen({ navigation, route }) {
 
 // ── ESTILOS ──
 const styles = StyleSheet.create({
+
+  // ── TRES VOLUMES (planejado / comprado / entregue) ──
+  tresVolumes: {
+    flexDirection: 'row',
+    marginTop: 14,
+  },
+
+  colunaVolume: { flex: 1, alignItems: 'center' },
+
+  colunaVolumeLabel: {
+    color: 'rgba(255,255,255,0.45)', fontSize: 9,
+    fontWeight: 'bold', letterSpacing: 1, marginBottom: 4,
+  },
+
+  colunaVolumeValor: {
+    color: '#fff', fontSize: 20, fontWeight: 'bold',
+  },
+
+  colunaVolumeUnidade: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 10, marginTop: 1,
+  },
 
   // Tela inteira com gradiente
   container: {
