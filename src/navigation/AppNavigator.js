@@ -20,6 +20,7 @@ import MenuMestreScreen from '../screens/MenuMestreScreen';
 // ── TELAS DO MENU DO MESTRE ──
 import TemperaturaScreen from '../screens/TemperaturaScreen';
 import HistoricoTemperaturaScreen from '../screens/HistoricoTemperaturaScreen';
+import PrevisaoResistenciaScreen from '../screens/PrevisaoResistenciaScreen';
 import FinanceiroScreen from '../screens/FinanceiroScreen';
 import LocalizacaoScreen from '../screens/LocalizacaoScreen';
 
@@ -63,6 +64,7 @@ export default function AppNavigator() {
         {/* ── TELAS DO MENU DO MESTRE ── */}
         <Stack.Screen name="Temperatura"          component={TemperaturaScreen} />
         <Stack.Screen name="HistoricoTemperatura" component={HistoricoTemperaturaScreen} />
+        <Stack.Screen name="PrevisaoResistencia"  component={PrevisaoResistenciaScreen} />
         <Stack.Screen name="Financeiro"           component={FinanceiroScreen} />
 
         {/* Rastreamento do caminhao — compartilhada: a construtora controla a

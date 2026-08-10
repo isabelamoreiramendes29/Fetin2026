@@ -18,20 +18,21 @@
 -- ─────────────────────────────────────────────────────────────
 
 insert into public.leituras_temperatura (id_obra, temperatura, medido_em) values
-  ('1', 72.5, now() - interval '10 hours'),
-  ('1', 74.1, now() - interval '9 hours'),
-  ('1', 76.8, now() - interval '8 hours'),
-  ('1', 79.2, now() - interval '7 hours'),
-  ('1', 81.5, now() - interval '6 hours'),
-  ('1', 83.0, now() - interval '5 hours'),
-  ('1', 84.6, now() - interval '4 hours'),
-  ('1', 82.1, now() - interval '3 hours'),
-  ('1', 79.4, now() - interval '2 hours'),
-  ('1', 76.9, now() - interval '1 hour'),
-  ('1', 75.3, now());
+  ('1', 19.4, now() - interval '10 hours'),
+  ('1', 20.8, now() - interval '9 hours'),
+  ('1', 22.6, now() - interval '8 hours'),
+  ('1', 24.9, now() - interval '7 hours'),
+  ('1', 27.3, now() - interval '6 hours'),
+  ('1', 29.1, now() - interval '5 hours'),
+  ('1', 31.4, now() - interval '4 hours'),
+  ('1', 29.8, now() - interval '3 hours'),
+  ('1', 27.2, now() - interval '2 hours'),
+  ('1', 24.5, now() - interval '1 hour'),
+  ('1', 22.7, now());
 
--- Curva acima: sobe de 72 ate ~85 e volta a cair — o comportamento
--- tipico da cura do cimento, passando pelas faixas Normal e Ideal.
+-- Curva acima: sobe de 19 ate ~31 e volta a cair. E o comportamento tipico da
+-- cura, com o calor da hidratacao do cimento levando a peca acima do ambiente
+-- nas primeiras horas. Passa pelas faixas Ideal e Alta, sem chegar na critica.
 
 -- Para apagar as leituras de teste desta obra:
 -- delete from public.leituras_temperatura where id_obra = '1';

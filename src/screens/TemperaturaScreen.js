@@ -39,52 +39,57 @@ const { width } = Dimensions.get('window');
 
 // ── CONFIGURACAO DAS ZONAS DE TEMPERATURA ──
 // Usada tanto nos botoes de simulacao quanto no texto de status
+// Faixas reais do concreto fresco. Abaixo de 10 °C a hidratacao do cimento
+// fica lenta demais; acima de 35 °C a pega acelera e a resistencia final cai.
+// A versao anterior ia de 55 a 95 °C e chamava 85 °C de "ideal" — nessa
+// temperatura o concreto ja estaria comprometido.
 const ZONAS = [
   {
-    nome: 'BAD',
-    tempSim: 55,              // temperatura de simulacao
+    nome: 'FRIO',
+    tempSim: 8,               // temperatura de simulacao
     cor: '#DC2626',           // vermelho
-    statusTexto: 'Temperatura muito baixa',
+    statusTexto: 'Frio demais — hidratação muito lenta',
   },
   {
-    nome: 'LOW',
-    tempSim: 65,
+    nome: 'BAIXA',
+    tempSim: 13,
     cor: '#F97316',           // laranja
-    statusTexto: 'Temperatura baixa',
+    statusTexto: 'Temperatura baixa — cura retardada',
   },
   {
-    nome: 'NORMAL',
-    tempSim: 75,
-    cor: '#FACC15',           // amarelo
-    statusTexto: 'Temperatura normal',
-  },
-  {
-    nome: 'GOOD',
-    tempSim: 85,
-    cor: '#84CC16',           // verde claro
+    nome: 'IDEAL',
+    tempSim: 22,
+    cor: '#22C55E',           // verde
     statusTexto: 'Temperatura ideal',
   },
   {
-    nome: 'MAX',
-    tempSim: 95,
-    cor: '#22C55E',           // verde escuro
-    statusTexto: 'Temperatura critica alta',
+    nome: 'ALTA',
+    tempSim: 32,
+    cor: '#FACC15',           // amarelo
+    statusTexto: 'Temperatura alta — atenção com a pega',
+  },
+  {
+    nome: 'CRÍTICA',
+    tempSim: 38,
+    cor: '#DC2626',           // vermelho
+    statusTexto: 'Acima do limite — risco à resistência',
   },
 ];
 
 // Retorna a zona correspondente a temperatura atual
 function obterZona(temp) {
-  if (temp < 60) return ZONAS[0]; // BAD
-  if (temp < 70) return ZONAS[1]; // LOW
-  if (temp < 80) return ZONAS[2]; // NORMAL
-  if (temp < 90) return ZONAS[3]; // GOOD
-  return ZONAS[4];                // MAX
+  if (temp < 10) return ZONAS[0]; // FRIO
+  if (temp < 15) return ZONAS[1]; // BAIXA
+  if (temp < 30) return ZONAS[2]; // IDEAL
+  if (temp < 35) return ZONAS[3]; // ALTA
+  return ZONAS[4];                // CRÍTICA
 }
 
-// Formata temperatura em array de 3 digitos para o display digital
-// Exemplo: 78 → ['0', '7', '8']  |  100 → ['1', '0', '0']
+// Formata temperatura em array de 2 digitos para o display digital
+// Exemplo: 22 → ['2', '2']  |  8 → ['0', '8']
+// Dois digitos bastam: a escala do concreto vai ate 40 °C.
 function formatarDigitos(temp) {
-  return String(Math.round(temp)).padStart(3, '0').split('');
+  return String(Math.round(temp)).padStart(2, '0').split('');
 }
 
 // Ha quanto tempo a leitura foi feita. Importa porque um valor de tres horas

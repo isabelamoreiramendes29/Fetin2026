@@ -1,8 +1,12 @@
 // Componente do velocimetro semicircular de temperatura
 // Usa react-native-svg para desenhar o arco com 5 zonas coloridas e ponteiro
 // Props:
-//   temperatura  — numero entre 50 e 100 (°C)
+//   temperatura  — numero entre 5 e 40 (°C)
 //   corZona      — string de cor CSS da zona atual (usada no pivot do ponteiro)
+//
+// A escala vai de 5 a 40 °C porque e essa a faixa do concreto fresco. A versao
+// anterior ia de 50 a 100 °C e chamava 85 °C de "ideal" — concreto a essa
+// temperatura estaria arruinado, com pega acelerada e perda de resistencia.
 
 import React from 'react';
 import { View } from 'react-native';
@@ -21,21 +25,28 @@ const R_INNER  = 93;   // borda interna (define a espessura da faixa)
 const R_NEEDLE = 115;  // comprimento do ponteiro ate a ponta
 const R_LABEL  = 161;  // raio onde ficam os textos das zonas (acima da faixa)
 
+// ── LIMITES DA ESCALA ──
+const TEMP_MIN = 5;
+const TEMP_MAX = 40;
+
 // ── DEFINICAO DAS 5 ZONAS DE TEMPERATURA ──
+// Vermelho nas duas pontas: frio demais retarda a hidratacao, quente demais
+// acelera a pega e reduz a resistencia final. A faixa boa e larga porque
+// concreto tolera bem a variacao no meio.
 const ZONAS = [
-  { nome: 'BAD',    minTemp: 50, maxTemp: 60,  cor: '#DC2626' }, // vermelho
-  { nome: 'LOW',    minTemp: 60, maxTemp: 70,  cor: '#F97316' }, // laranja
-  { nome: 'NORMAL', minTemp: 70, maxTemp: 80,  cor: '#FACC15' }, // amarelo
-  { nome: 'GOOD',   minTemp: 80, maxTemp: 90,  cor: '#84CC16' }, // verde claro
-  { nome: 'MAX',    minTemp: 90, maxTemp: 100, cor: '#22C55E' }, // verde escuro
+  { nome: 'FRIO',    minTemp: 5,  maxTemp: 10, cor: '#DC2626' }, // vermelho
+  { nome: 'BAIXA',   minTemp: 10, maxTemp: 15, cor: '#F97316' }, // laranja
+  { nome: 'IDEAL',   minTemp: 15, maxTemp: 30, cor: '#22C55E' }, // verde
+  { nome: 'ALTA',    minTemp: 30, maxTemp: 35, cor: '#FACC15' }, // amarelo
+  { nome: 'CRÍTICA', minTemp: 35, maxTemp: 40, cor: '#DC2626' }, // vermelho
 ];
 
 // ── FUNCOES AUXILIARES ──
 
 // Converte temperatura para angulo matematico (anti-horario a partir do eixo positivo X)
-// 50°C = 180° (esquerda), 75°C = 90° (topo), 100°C = 0° (direita)
+// 5°C = 180° (esquerda), 22,5°C = 90° (topo), 40°C = 0° (direita)
 function tempParaAngulo(temp) {
-  return 180 - ((temp - 50) / 50) * 180;
+  return 180 - ((temp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 180;
 }
 
 // Converte angulo + raio para ponto SVG {x, y}
@@ -76,9 +87,9 @@ function buildZonePath(minTemp, maxTemp) {
 }
 
 // ── COMPONENTE ──
-export default function VelocimetroTemperatura({ temperatura = 75, corZona = '#FACC15' }) {
-  // Garante que a temperatura fica dentro do intervalo valido [50, 100]
-  const tempClamp = Math.max(50, Math.min(100, temperatura));
+export default function VelocimetroTemperatura({ temperatura = 22, corZona = '#22C55E' }) {
+  // Garante que a temperatura fica dentro do intervalo desenhado
+  const tempClamp = Math.max(TEMP_MIN, Math.min(TEMP_MAX, temperatura));
 
   // ── CALCULO DO PONTEIRO ──
   // O ponteiro e um triangulo fino: base larga no centro, ponta na temperatura
@@ -128,8 +139,9 @@ export default function VelocimetroTemperatura({ temperatura = 75, corZona = '#F
         ))}
 
         {/* ── LINHAS DIVISORAS ENTRE AS ZONAS ── */}
-        {/* Desenhadas nas temperaturas 60, 70, 80, 90 (limites entre zonas) */}
-        {[60, 70, 80, 90].map((temp) => {
+        {/* Derivadas das proprias zonas: o limite superior de cada uma, menos
+            a ultima, que termina na borda do arco */}
+        {ZONAS.slice(0, -1).map((z) => z.maxTemp).map((temp) => {
           const a  = tempParaAngulo(temp);
           const po = pt(a, R_OUTER + 1);
           const pi = pt(a, R_INNER - 1);

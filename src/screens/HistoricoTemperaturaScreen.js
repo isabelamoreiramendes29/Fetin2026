@@ -26,12 +26,14 @@ const { width } = Dimensions.get('window');
 // STATUS BASEADO NA TEMPERATURA
 // Retorna texto, cor e emoji conforme a faixa da medicao
 // ─────────────────────────────────────────────────────────────
+// Mesmas faixas do velocimetro e da tela de Temperatura — se mudarem la,
+// mudam aqui tambem
 const getStatus = (temp) => {
-  if (temp < 60) return { texto: 'Muito baixa', cor: '#DC2626', emoji: '🔴' };
-  if (temp < 70) return { texto: 'Baixa',        cor: '#F97316', emoji: '🟠' };
-  if (temp < 80) return { texto: 'Normal',        cor: '#FACC15', emoji: '🟡' };
-  if (temp < 90) return { texto: 'Ideal',         cor: '#22C55E', emoji: '🟢' };
-  return          { texto: 'Crítica',             cor: '#DC2626', emoji: '🔴' };
+  if (temp < 10) return { texto: 'Frio',    cor: '#DC2626', emoji: '🔴' };
+  if (temp < 15) return { texto: 'Baixa',   cor: '#F97316', emoji: '🟠' };
+  if (temp < 30) return { texto: 'Ideal',   cor: '#22C55E', emoji: '🟢' };
+  if (temp < 35) return { texto: 'Alta',    cor: '#FACC15', emoji: '🟡' };
+  return           { texto: 'Crítica', cor: '#DC2626', emoji: '🔴' };
 };
 
 // Formata Date como DD/MM/AAAA

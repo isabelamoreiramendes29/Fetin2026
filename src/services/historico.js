@@ -64,6 +64,36 @@ export async function buscarUltimaLeitura(obraId) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// LEITURAS BRUTAS DE UM INTERVALO
+// Sem agrupamento: o calculo de maturidade integra a curva ponto a ponto, e
+// agrupar por faixa horaria jogaria fora justamente a variacao que importa.
+//
+// `ate` opcional — sem ele, vai ate agora.
+// ─────────────────────────────────────────────────────────────
+export async function buscarLeiturasBrutas(obraId, desde, ate = null) {
+  let consulta = supabase
+    .from('leituras_temperatura')
+    .select('temperatura, medido_em')
+    .eq('id_obra', String(obraId))
+    .gte('medido_em', new Date(desde).toISOString())
+    .order('medido_em', { ascending: true });
+
+  if (ate) consulta = consulta.lte('medido_em', new Date(ate).toISOString());
+
+  const { data, error } = await consulta;
+
+  if (error) {
+    console.error('[Historico] Erro ao buscar leituras brutas:', error.message);
+    throw new Error('Não foi possível carregar as leituras.');
+  }
+
+  return data.map((linha) => ({
+    temperatura: Number(linha.temperatura),
+    medidoEm: linha.medido_em,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────
 // AGRUPAR LEITURAS
 // O sensor publica em intervalos irregulares — varias leituras por minuto.
 // Mostrar cada uma deixaria o grafico ilegivel, entao elas sao agrupadas
