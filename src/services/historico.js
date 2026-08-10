@@ -10,13 +10,14 @@
 // desta funcao — a tela nao muda.
 
 import { supabase } from './supabase';
+import { verificarTemperatura } from './alertas';
 
 // ─────────────────────────────────────────────────────────────
 // GRAVAR UMA LEITURA
 // Chamada a cada valor que chega pelo MQTT. Falha de gravacao nao pode
 // derrubar a exibicao ao vivo, entao o erro e apenas registrado.
 // ─────────────────────────────────────────────────────────────
-export async function salvarLeitura(obraId, temperatura) {
+export async function salvarLeitura(obraId, temperatura, contexto = {}) {
   const { error } = await supabase
     .from('leituras_temperatura')
     .insert({ id_obra: String(obraId), temperatura });
@@ -25,6 +26,11 @@ export async function salvarLeitura(obraId, temperatura) {
     console.warn('[Historico] Nao gravou a leitura:', error.message);
     return false;
   }
+
+  // Toda leitura passa por aqui, entao este e o lugar certo para checar se ela
+  // merece alerta — vale para o sensor e para os botoes de simulacao.
+  // Sem await: a tela nao espera o alerta para atualizar o mostrador.
+  verificarTemperatura(obraId, temperatura, contexto.obraNome, contexto.caminhao);
 
   return true;
 }

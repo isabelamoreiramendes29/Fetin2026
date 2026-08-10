@@ -28,6 +28,13 @@ export default function MenuMestreScreen({ navigation, route }) {
   // Cada item define: icone, familia do icone, texto exibido e a tela de destino
   const itensMenu = [
     {
+      id: 'alertas',
+      icone: 'bell-alert-outline',
+      tipoIcone: 'MaterialCommunityIcons',
+      texto: 'Alertas',
+      tela: 'Alertas',
+    },
+    {
       id: 'temperatura',
       icone: 'thermometer-outline',
       tipoIcone: 'Ionicons',
@@ -122,8 +129,17 @@ export default function MenuMestreScreen({ navigation, route }) {
         </View>
 
         {/* ── NOME DA OBRA SELECIONADA ── */}
-        {/* Exibe o nome da obra para o usuario saber qual esta visualizando */}
-        <Text style={styles.nomeObra}>{obraNome}</Text>
+        {/* Tocavel: leva aos dados cadastrados e ao andamento da obra. Entrou
+            aqui em vez de virar mais um card porque o menu ja tem sete, e
+            tocar no nome da obra para ver a obra e o gesto natural. */}
+        <TouchableOpacity
+          style={styles.obraBotao}
+          onPress={() => navigation.navigate('DetalhesObra', { obraId, obraNome })}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.nomeObra}>{obraNome}</Text>
+          <Ionicons name="information-circle-outline" size={17} color="rgba(255,255,255,0.5)" />
+        </TouchableOpacity>
 
         {/* ── CARDS DO MENU ── */}
         {/*
@@ -222,6 +238,14 @@ const styles = StyleSheet.create({
   },
 
   // Nome da obra selecionada — exibido abaixo do cabecalho
+  // Agrupa o nome da obra e o icone que sinaliza que da para tocar
+  obraBotao: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+
   nomeObra: {
     color: 'rgba(255,255,255,0.6)',
     fontSize: 14,

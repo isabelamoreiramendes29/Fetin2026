@@ -40,6 +40,13 @@ function formatarMoeda(valor) {
   return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Converte o que o usuario digitou em numero, aceitando virgula.
+// parseFloat('7,5') devolve 7 — ele para na virgula. Como o teclado brasileiro
+// oferece virgula como separador decimal, sem isto toda casa decimal se perde.
+function paraNumero(texto) {
+  return parseFloat(String(texto).replace(',', '.'));
+}
+
 // Formata a data do banco ('AAAA-MM-DD') para DD/MM.
 // Nao usa new Date() de proposito: essa string e interpretada como UTC, e no
 // fuso do Brasil isso mostraria o dia anterior.
@@ -105,10 +112,13 @@ export default function FinanceiroScreen({ navigation, route }) {
   async function handleSalvar() {
     Keyboard.dismiss();
 
-    if (!volume || parseFloat(volume) <= 0) {
+    const volumeNumero = paraNumero(volume);
+    const valorNumero  = paraNumero(valor);
+
+    if (!volumeNumero || volumeNumero <= 0) {
       return Alert.alert('Campo obrigatório', 'Informe o volume de cimento em m³.');
     }
-    if (!valor || parseFloat(valor) <= 0) {
+    if (!valorNumero || valorNumero <= 0) {
       return Alert.alert('Campo obrigatório', 'Informe o valor da compra em R$.');
     }
     if (salvando) return;
@@ -117,8 +127,8 @@ export default function FinanceiroScreen({ navigation, route }) {
     try {
       const nova = await adicionarCompra(obraId, {
         data,
-        volume: parseFloat(volume),
-        valor: parseFloat(valor),
+        volume: volumeNumero,
+        valor: valorNumero,
       });
 
       // A lista vem ordenada por data decrescente, e a compra recem-lancada

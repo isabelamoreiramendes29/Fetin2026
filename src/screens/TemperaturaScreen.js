@@ -31,6 +31,7 @@ import { buscarCompras } from '../services/financeiro';
 import { totalEntregue } from '../services/caminhoes';
 import { useObras } from '../context/ObrasContext';
 import { useCaminhoes } from '../context/CaminhoesContext';
+import { ZONAS, avaliarTemperatura } from '../config/temperatura';
 
 // De quanto em quanto tempo a tela reconsulta a ultima leitura
 const INTERVALO_CONSULTA_MS = 5000;
@@ -39,51 +40,8 @@ const { width } = Dimensions.get('window');
 
 // ── CONFIGURACAO DAS ZONAS DE TEMPERATURA ──
 // Usada tanto nos botoes de simulacao quanto no texto de status
-// Faixas reais do concreto fresco. Abaixo de 10 °C a hidratacao do cimento
-// fica lenta demais; acima de 35 °C a pega acelera e a resistencia final cai.
-// A versao anterior ia de 55 a 95 °C e chamava 85 °C de "ideal" — nessa
-// temperatura o concreto ja estaria comprometido.
-const ZONAS = [
-  {
-    nome: 'FRIO',
-    tempSim: 8,               // temperatura de simulacao
-    cor: '#DC2626',           // vermelho
-    statusTexto: 'Frio demais — hidratação muito lenta',
-  },
-  {
-    nome: 'BAIXA',
-    tempSim: 13,
-    cor: '#F97316',           // laranja
-    statusTexto: 'Temperatura baixa — cura retardada',
-  },
-  {
-    nome: 'IDEAL',
-    tempSim: 22,
-    cor: '#22C55E',           // verde
-    statusTexto: 'Temperatura ideal',
-  },
-  {
-    nome: 'ALTA',
-    tempSim: 32,
-    cor: '#FACC15',           // amarelo
-    statusTexto: 'Temperatura alta — atenção com a pega',
-  },
-  {
-    nome: 'CRÍTICA',
-    tempSim: 38,
-    cor: '#DC2626',           // vermelho
-    statusTexto: 'Acima do limite — risco à resistência',
-  },
-];
-
-// Retorna a zona correspondente a temperatura atual
-function obterZona(temp) {
-  if (temp < 10) return ZONAS[0]; // FRIO
-  if (temp < 15) return ZONAS[1]; // BAIXA
-  if (temp < 30) return ZONAS[2]; // IDEAL
-  if (temp < 35) return ZONAS[3]; // ALTA
-  return ZONAS[4];                // CRÍTICA
-}
+// As faixas vivem em config/temperatura.js — o velocimetro, o historico e os
+// alertas leem do mesmo lugar
 
 // Formata temperatura em array de 2 digitos para o display digital
 // Exemplo: 22 → ['2', '2']  |  8 → ['0', '8']
@@ -160,11 +118,12 @@ export default function TemperaturaScreen({ navigation, route }) {
   async function simularLeitura(valor) {
     setTemperatura(valor);
     setMedidoEm(new Date().toISOString());
-    await salvarLeitura(obraId, valor);
+    // O nome da obra vai junto para a notificacao dizer de qual obra se trata
+    await salvarLeitura(obraId, valor, { obraNome });
   }
 
   // Derivados da temperatura atual
-  const zonaAtual = obterZona(temperatura);
+  const zonaAtual = avaliarTemperatura(temperatura);
   const digitos   = formatarDigitos(temperatura);
 
   // ── VOLUME DE CIMENTO ──

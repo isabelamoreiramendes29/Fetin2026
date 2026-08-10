@@ -8,15 +8,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import LogoCemtinel from '../components/LogoCemtinel';
 
 // Pega a largura da tela para calcular tamanhos proporcionais
 const { width, height } = Dimensions.get('window');
-
-const logoCemtinel = require('../../assets/logo.png');
 
 export default function WelcomeScreen({ navigation }) {
   return (
@@ -28,11 +26,10 @@ export default function WelcomeScreen({ navigation }) {
     >
 
       {/* ── AREA DO LOGO ── */}
+      {/* Desenhada em vetor, nao carregada de PNG: o arquivo tem fundo branco
+          e viraria um quadrado claro no meio do gradiente */}
       <View style={styles.logoArea}>
-        <Image
-          source={logoCemtinel}
-          style={styles.logo}
-        />
+        <LogoCemtinel largura={width * 0.78} />
       </View>
 
       {/* ── BOTOES ── */}
@@ -71,19 +68,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Agrupa a imagem do logo
+  // Agrupa a logo
   logoArea: {
     alignItems: 'center',
-    marginBottom: 32,
-  },
-
-  // Imagem da logo
-  logo: {
-    width: 250,
-    height: 250,
-    resizeMode: 'contain',
-    marginBottom: 20,
-    alignSelf: 'center',
+    marginBottom: 48,
   },
 
   // Agrupa os dois botoes

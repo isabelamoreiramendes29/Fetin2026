@@ -11,6 +11,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
+import { ZONAS, TEMP_MIN_ESCALA, TEMP_MAX_ESCALA } from '../config/temperatura';
 
 // ── DIMENSOES DO CANVAS SVG ──
 const W  = 380;   // largura do viewBox
@@ -25,21 +26,10 @@ const R_INNER  = 93;   // borda interna (define a espessura da faixa)
 const R_NEEDLE = 115;  // comprimento do ponteiro ate a ponta
 const R_LABEL  = 161;  // raio onde ficam os textos das zonas (acima da faixa)
 
-// ── LIMITES DA ESCALA ──
-const TEMP_MIN = 5;
-const TEMP_MAX = 40;
-
-// ── DEFINICAO DAS 5 ZONAS DE TEMPERATURA ──
-// Vermelho nas duas pontas: frio demais retarda a hidratacao, quente demais
-// acelera a pega e reduz a resistencia final. A faixa boa e larga porque
-// concreto tolera bem a variacao no meio.
-const ZONAS = [
-  { nome: 'FRIO',    minTemp: 5,  maxTemp: 10, cor: '#DC2626' }, // vermelho
-  { nome: 'BAIXA',   minTemp: 10, maxTemp: 15, cor: '#F97316' }, // laranja
-  { nome: 'IDEAL',   minTemp: 15, maxTemp: 30, cor: '#22C55E' }, // verde
-  { nome: 'ALTA',    minTemp: 30, maxTemp: 35, cor: '#FACC15' }, // amarelo
-  { nome: 'CRÍTICA', minTemp: 35, maxTemp: 40, cor: '#DC2626' }, // vermelho
-];
+// As zonas e os limites da escala vem de config/temperatura.js — mesma fonte
+// que a tela de Temperatura, o Historico e os alertas usam
+const TEMP_MIN = TEMP_MIN_ESCALA;
+const TEMP_MAX = TEMP_MAX_ESCALA;
 
 // ── FUNCOES AUXILIARES ──
 
@@ -135,13 +125,13 @@ export default function VelocimetroTemperatura({ temperatura = 22, corZona = '#2
 
         {/* ── ZONAS COLORIDAS DO ARCO ── */}
         {ZONAS.map((z) => (
-          <Path key={z.nome} d={buildZonePath(z.minTemp, z.maxTemp)} fill={z.cor} />
+          <Path key={z.nome} d={buildZonePath(z.min, z.max)} fill={z.cor} />
         ))}
 
         {/* ── LINHAS DIVISORAS ENTRE AS ZONAS ── */}
         {/* Derivadas das proprias zonas: o limite superior de cada uma, menos
             a ultima, que termina na borda do arco */}
-        {ZONAS.slice(0, -1).map((z) => z.maxTemp).map((temp) => {
+        {ZONAS.slice(0, -1).map((z) => z.max).map((temp) => {
           const a  = tempParaAngulo(temp);
           const po = pt(a, R_OUTER + 1);
           const pi = pt(a, R_INNER - 1);
@@ -159,7 +149,7 @@ export default function VelocimetroTemperatura({ temperatura = 22, corZona = '#2
         {/* ── LABELS DAS ZONAS ── */}
         {/* Posicionados no angulo central de cada zona, levemente acima do arco */}
         {ZONAS.map((z) => {
-          const midAngle = (tempParaAngulo(z.minTemp) + tempParaAngulo(z.maxTemp)) / 2;
+          const midAngle = (tempParaAngulo(z.min) + tempParaAngulo(z.max)) / 2;
           const pos = pt(midAngle, R_LABEL);
           return (
             <SvgText

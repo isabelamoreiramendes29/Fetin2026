@@ -19,6 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import GraficoHistorico from '../components/GraficoHistorico';
 import { buscarHistoricoTemperatura } from '../services/historico';
+import { avaliarTemperatura } from '../config/temperatura';
 
 const { width } = Dimensions.get('window');
 
@@ -26,14 +27,11 @@ const { width } = Dimensions.get('window');
 // STATUS BASEADO NA TEMPERATURA
 // Retorna texto, cor e emoji conforme a faixa da medicao
 // ─────────────────────────────────────────────────────────────
-// Mesmas faixas do velocimetro e da tela de Temperatura — se mudarem la,
-// mudam aqui tambem
+// As faixas vem de config/temperatura.js, a mesma fonte do velocimetro e dos
+// alertas — antes estavam repetidas aqui, esperando divergir
 const getStatus = (temp) => {
-  if (temp < 10) return { texto: 'Frio',    cor: '#DC2626', emoji: '🔴' };
-  if (temp < 15) return { texto: 'Baixa',   cor: '#F97316', emoji: '🟠' };
-  if (temp < 30) return { texto: 'Ideal',   cor: '#22C55E', emoji: '🟢' };
-  if (temp < 35) return { texto: 'Alta',    cor: '#FACC15', emoji: '🟡' };
-  return           { texto: 'Crítica', cor: '#DC2626', emoji: '🔴' };
+  const zona = avaliarTemperatura(temp);
+  return { texto: zona.rotulo, cor: zona.cor, emoji: zona.emoji };
 };
 
 // Formata Date como DD/MM/AAAA
