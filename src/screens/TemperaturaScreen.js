@@ -32,6 +32,8 @@ import { totalEntregue } from '../services/caminhoes';
 import { useObras } from '../context/ObrasContext';
 import { useCaminhoes } from '../context/CaminhoesContext';
 import { ZONAS, avaliarTemperatura } from '../config/temperatura';
+import { inscreverSensor } from '../services/mqtt';
+import { registrarVolumeEntregue } from '../services/caminhoes';
 
 // De quanto em quanto tempo a tela reconsulta a ultima leitura
 const INTERVALO_CONSULTA_MS = 5000;
@@ -77,7 +79,7 @@ export default function TemperaturaScreen({ navigation, route }) {
   // Fontes dos tres volumes: a obra traz o planejado, as compras trazem o
   // comprado, e os envios trazem o que o sensor mediu na descarga
   const { obras } = useObras();
-  const { caminhoes } = useCaminhoes();
+  const { caminhoes, recarregar: recarregarCaminhoes } = useCaminhoes();
   const [compras, setCompras] = useState([]);
 
   useEffect(() => {
@@ -105,13 +107,102 @@ export default function TemperaturaScreen({ navigation, route }) {
     }
   }, [obraId]);
 
-  // Consulta ao abrir e periodicamente: quem grava as leituras e outro
-  // processo, entao a tela precisa perguntar de tempos em tempos
+  // Consulta ao abrir e periodicamente. Continua valendo mesmo com o MQTT
+  // ligado: se outro aparelho ou o servico de gravacao registrar uma leitura,
+  // esta tela a enxerga sem depender do broker.
   useEffect(() => {
     carregar();
     const intervalo = setInterval(carregar, INTERVALO_CONSULTA_MS);
     return () => clearInterval(intervalo);
   }, [carregar]);
+
+  // ── SENSOR AO VIVO ──
+  // O broker entrega a leitura no instante em que o sensor publica. Quem grava
+  // e o mestre, que esta no canteiro recebendo o concreto; a construtora
+  // acompanha em modo consulta e nao escreve, para a mesma leitura nao entrar
+  // duas vezes se os dois estiverem com o app aberto.
+  const [sensorConectado, setSensorConectado] = useState(false);
+
+  // O sensor publica por caminhao, nao por obra — ele nao sabe para onde esta
+  // indo. Quem faz a ponte e esta lista: os caminhoes despachados para esta
+  // obra definem quais topicos assinar.
+  const caminhoesDaObra = caminhoes
+    .filter((c) => c.obraId === String(obraId))
+    .map((c) => c.caminhao);
+
+  // Chave estavel para a lista, para o efeito nao reassinar a cada render
+  const chaveCaminhoes = caminhoesDaObra.join(',');
+
+  // O volume chega uma vez, no fim da descarga. Ele pertence a viagem mais
+  // recente daquele caminhao que ainda nao foi medida.
+  const registrarVolumeDoSensor = useCallback(async (caminhao, volume) => {
+    const envio = caminhoes.find(
+      (c) => c.obraId === String(obraId)
+          && c.caminhao === caminhao
+          && c.volumeEntregue === null
+    );
+
+    // Descarte silencioso aqui seria cruel: o valor chegou, nao foi gravado, e
+    // ninguem saberia por que. Melhor a tela dizer o que faltou.
+    if (!envio) {
+      const despachados = caminhoes
+        .filter((c) => c.obraId === String(obraId) && c.volumeEntregue === null)
+        .map((c) => c.caminhao);
+
+      console.warn(
+        `[Temperatura] Volume de ${volume} m³ do caminhao ${caminhao} chegou sem viagem pendente`
+      );
+
+      Alert.alert(
+        'Volume sem viagem correspondente',
+        `Chegou ${volume} m³ do caminhão ${caminhao}, mas não há viagem dele aguardando medição nesta obra.\n\n` +
+        (despachados.length
+          ? `Aguardando medição: ${despachados.join(', ')}.`
+          : 'Nenhum caminhão desta obra está aguardando medição.') +
+        '\n\nDespache o caminhão em Enviar Caminhão antes de medir o volume.'
+      );
+      return;
+    }
+
+    try {
+      await registrarVolumeEntregue(envio.id, volume);
+      await recarregarCaminhoes();
+      console.log(`[Temperatura] Volume ${volume} m³ registrado na viagem ${envio.id}`);
+    } catch (falha) {
+      console.warn('[Temperatura]', falha.message);
+      Alert.alert('Erro', falha.message);
+    }
+  }, [caminhoes, obraId, recarregarCaminhoes]);
+
+  useEffect(() => {
+    if (!obraId) return;
+
+    const desinscrever = inscreverSensor(obraId, caminhoesDaObra, {
+      onTemperatura: ({ temperatura: valor, caminhao }) => {
+        setTemperatura(valor);
+        setMedidoEm(new Date().toISOString());
+
+        if (!somenteLeitura) {
+          salvarLeitura(obraId, valor, { obraNome, caminhao });
+        }
+      },
+
+      // Volume grava nos dois perfis, diferente da temperatura. Temperatura
+      // ACRESCENTA uma linha por leitura — dois aparelhos gravando criariam
+      // duplicatas. Volume PREENCHE um campo de uma viagem: se os dois
+      // gravarem, o segundo escreve o mesmo valor no mesmo lugar.
+      //
+      // E a construtora e quem mais precisa: a betoneira e dela.
+      onVolume: ({ volume, caminhao }) => registrarVolumeDoSensor(caminhao, volume),
+
+      onEstado: setSensorConectado,
+    });
+
+    return () => {
+      if (desinscrever) desinscrever();
+    };
+    // chaveCaminhoes no lugar da lista: array novo a cada render reassinaria sempre
+  }, [obraId, obraNome, somenteLeitura, chaveCaminhoes, registrarVolumeDoSensor]);
 
   // Botao de simulacao: grava uma leitura de verdade, para a tela e o Historico
   // se comportarem exatamente como se comportarao com o sensor ligado
@@ -217,16 +308,20 @@ export default function TemperaturaScreen({ navigation, route }) {
         {/* ── NOME DA OBRA ── */}
         <Text style={styles.nomeObra}>{obraNome}</Text>
 
-        {/* ── QUANDO A LEITURA EXIBIDA FOI FEITA ── */}
+        {/* ── ESTADO DO SENSOR E DA ULTIMA LEITURA ── */}
+        {/* Duas informacoes diferentes de proposito: o sensor pode estar
+            conectado sem ter publicado nada ainda, e pode haver leitura antiga
+            no banco com o broker fora do ar. Separadas, dizem onde esta o
+            problema quando nada aparece. */}
         <View style={styles.statusMQTT}>
           <View style={[
             styles.bolinhaStatus,
-            { backgroundColor: medidoEm ? '#22C55E' : '#FACC15' }
+            { backgroundColor: sensorConectado ? '#22C55E' : 'rgba(255,255,255,0.35)' }
           ]} />
           <Text style={styles.textoStatus}>
-            {medidoEm
-              ? `Última leitura ${formatarQuando(medidoEm)}`
-              : 'Nenhuma leitura registrada nesta obra'}
+            {sensorConectado ? 'Sensor conectado' : 'Sensor desconectado'}
+            {'  ·  '}
+            {medidoEm ? formatarQuando(medidoEm) : 'sem leitura'}
           </Text>
         </View>
 
@@ -258,13 +353,15 @@ export default function TemperaturaScreen({ navigation, route }) {
         </View>
 
         {/* ── BOTOES DE SIMULACAO ── */}
-        {/* Gravam uma leitura de verdade, e nao so mudam o mostrador: assim a
-            tela e o Historico se comportam igual ao que farao com o sensor.
-            Saem quando o hardware estiver integrado.
+        {/* Só aparecem quando NAO ha sensor conectado. Com o sensor publicando,
+            somem sozinhos: quem mede e o sensor, e botao que muda temperatura
+            com o dedo poe em duvida todo o resto do sistema.
+            Existem como rede de seguranca — se o hardware falhar na
+            apresentacao, ainda da para demonstrar a tela.
 
-            So aparecem para o mestre: a medicao acontece no canteiro, e a
-            construtora acompanha o resultado sem poder alterar. */}
-        {!somenteLeitura && (
+            E so para o mestre: a medicao acontece no canteiro, e a construtora
+            acompanha o resultado sem poder alterar. */}
+        {!somenteLeitura && !sensorConectado && (
         <View style={styles.botoesContainer}>
           {ZONAS.map((zona) => (
             <TouchableOpacity
@@ -283,6 +380,13 @@ export default function TemperaturaScreen({ navigation, route }) {
             </TouchableOpacity>
           ))}
         </View>
+        )}
+
+        {/* Deixa explicito que aquilo nao e medicao */}
+        {!somenteLeitura && !sensorConectado && (
+          <Text style={styles.avisoSimulacao}>
+            Simulação — disponível apenas enquanto o sensor está desconectado
+          </Text>
         )}
 
         {/* ── CARD VOLUME DE CIMENTO ── */}
@@ -348,6 +452,12 @@ export default function TemperaturaScreen({ navigation, route }) {
 
 // ── ESTILOS ──
 const styles = StyleSheet.create({
+
+  avisoSimulacao: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 10.5,
+    textAlign: 'center', fontStyle: 'italic',
+    marginTop: -4, marginBottom: 10, paddingHorizontal: 24,
+  },
 
   // ── TRES VOLUMES (planejado / comprado / entregue) ──
   tresVolumes: {

@@ -28,6 +28,9 @@ import MapaRota, { comprimentoRota } from '../components/MapaRota';
 import { publicarPosicao, buscarPosicoes } from '../services/rastreamento';
 import { corDoCaminhao } from '../services/planta';
 import { buscarFrota, acharCaminhao } from '../services/frota';
+import { coordenadaDe, enderecoDaObra, tracarRota } from '../services/geo';
+import { useObras } from '../context/ObrasContext';
+import deposito from '../config/deposito';
 
 // De quanto em quanto tempo o mestre reconsulta a posicao do caminhao
 const INTERVALO_CONSULTA_MS = 3000;
@@ -38,30 +41,8 @@ const PASSO_PCT = 2;
 
 const { width } = Dimensions.get('window');
 
-// ─────────────────────────────────────────────────────────────
-// ROTA — coordenadas reais em Sao Paulo
-// Da regiao da Barra Funda ate a Av. Paulista, que e o endereco da Obra 1
-// em obrasIniciais (ObrasContext).
-//
-// Fixa por enquanto: quando as obras vierem do banco com endereco real, esta
-// rota passa a ser derivada dele em vez de escrita aqui.
-// ─────────────────────────────────────────────────────────────
-const ROTA = [
-  { latitude: -23.5230, longitude: -46.6690 }, // Depósito
-  { latitude: -23.5310, longitude: -46.6655 },
-  { latitude: -23.5400, longitude: -46.6600 },
-  { latitude: -23.5490, longitude: -46.6560 },
-  { latitude: -23.5570, longitude: -46.6540 },
-  { latitude: -23.5629, longitude: -46.6544 }, // Obra — Av. Paulista
-];
-
-// Distancia real da rota, calculada por haversine. Antes era um 12,5 km
-// inventado que nao correspondia a distancia nenhuma.
-const DISTANCIA_TOTAL = comprimentoRota(ROTA);
-
 // Velocidade media estimada em transito urbano, usada para o ETA
 const VELOCIDADE_MEDIA_KMH = 25;
-const TEMPO_TOTAL = (DISTANCIA_TOTAL / VELOCIDADE_MEDIA_KMH) * 60; // minutos
 
 // Status textual + cor + ícone conforme posição do caminhão
 function getStatus(pos) {
@@ -112,6 +93,60 @@ export default function LocalizacaoScreen({ navigation, route }) {
       .then(setFrota)
       .catch((falha) => console.warn('[Localizacao] Frota:', falha.message));
   }, []);
+
+  // ── ROTA ──
+  // Antes eram seis coordenadas fixas em Sao Paulo, escritas no codigo. Uma
+  // obra em Santa Rita do Sapucai aparecia na Avenida Paulista. Agora a origem
+  // vem do endereco da central (config/deposito.js) e o destino do endereco
+  // cadastrado na propria obra.
+  const { obras } = useObras();
+  const obra = obras.find((o) => o.id === String(obraId));
+
+  const [rota, setRota] = useState(null);
+  const [avisoRota, setAvisoRota] = useState(null);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function montarRota() {
+      const enderecoObra = enderecoDaObra(obra);
+
+      const [origem, destino] = await Promise.all([
+        coordenadaDe(deposito.endereco),
+        coordenadaDe(enderecoObra),
+      ]);
+
+      if (cancelado) return;
+
+      // Sem o destino nao ha rota possivel: e o endereco da obra que define
+      // para onde o caminhao vai
+      if (!destino) {
+        setRota(null);
+        setAvisoRota(
+          enderecoObra
+            ? 'Não foi possível localizar o endereço da obra no mapa.'
+            : 'A obra não tem endereço cadastrado.'
+        );
+        return;
+      }
+
+      // A origem tem reserva porque a central e sempre a mesma e conhecida
+      const partida = origem || deposito.coordenadaReserva;
+      if (!origem) {
+        console.warn('[Localizacao] Central nao geocodificada, usando coordenada reserva.');
+      }
+
+      setRota(tracarRota(partida, destino));
+      setAvisoRota(null);
+    }
+
+    montarRota();
+    return () => { cancelado = true; };
+  }, [obra?.endereco, obra?.numero, obra?.cep]);
+
+  // Distancia real da rota, por haversine. Antes era um 12,5 km inventado.
+  const DISTANCIA_TOTAL = rota ? comprimentoRota(rota) : 0;
+  const TEMPO_TOTAL = (DISTANCIA_TOTAL / VELOCIDADE_MEDIA_KMH) * 60; // minutos
 
   // ── MODO CONSULTA (mestre): reconsulta o banco periodicamente ──
   useEffect(() => {
@@ -229,16 +264,25 @@ export default function LocalizacaoScreen({ navigation, route }) {
         <Text style={styles.nomeObra}>{obraNome}</Text>
 
         {/* ── MAPA ── */}
-        <View style={[styles.card, styles.cardMapa]}>
-          <MapaRota
-            rota={ROTA}
-            caminhoes={posicoes}
-            destaque={somenteLeitura ? null : selecionado}
-            nomeOrigem="Depósito Central"
-            nomeDestino={obraNome}
-            altura={280}
-          />
-        </View>
+        {rota ? (
+          <View style={[styles.card, styles.cardMapa]}>
+            <MapaRota
+              rota={rota}
+              caminhoes={posicoes}
+              destaque={somenteLeitura ? null : selecionado}
+              nomeOrigem={deposito.nome}
+              nomeDestino={obraNome}
+              altura={280}
+            />
+          </View>
+        ) : (
+          <View style={styles.avisoVazio}>
+            <Ionicons name="map-outline" size={18} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.avisoVazioTexto}>
+              {avisoRota || 'Localizando o endereço da obra...'}
+            </Text>
+          </View>
+        )}
 
         {posicoes.length === 0 && (
           <View style={styles.avisoVazio}>
@@ -354,10 +398,13 @@ export default function LocalizacaoScreen({ navigation, route }) {
         </View>
         )}
 
+        {/* O traco entre origem e destino e uma reta: rota por ruas exigiria a
+            API de direcoes do Google, que e paga. Melhor a tela dizer isso do
+            que alguem perguntar na banca. */}
         <Text style={styles.notaDemonstracao}>
           {somenteLeitura
-            ? '* Posição enviada pela construtora — LoRa em integração'
-            : '* Trajeto simulado — LoRa em integração'}
+            ? '* Posição enviada pela construtora · trajeto em linha reta'
+            : '* Posição simulada · trajeto em linha reta'}
         </Text>
 
       </ScrollView>
