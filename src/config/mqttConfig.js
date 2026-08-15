@@ -68,6 +68,30 @@ const mqttConfig = {
   // Deixe como null para parar de assinar o legado.
   topicoLegado: 'app/enviar_caminhao/resp',
 
+  // ─────────────────────────────────────────────────────────────
+  // SENSOR ATUAL
+  //
+  // E o que o hardware publica hoje, descoberto escutando o broker:
+  //
+  //   sensores/temperatura     → 22.75
+  //   sensores/umidade/valor   → 4095
+  //   sensores/umidade/status  → SECO
+  //
+  // Topicos planos, sem identificacao de caminhao. Como existe um sensor so,
+  // o app assume que ele e do caminhao configurado abaixo. Quando houver mais
+  // de um, o firmware precisa incluir o numero no topico — a estrutura
+  // cemtinel/caminhao/{n}/... ja esta pronta para receber.
+  // ─────────────────────────────────────────────────────────────
+  sensorSimples: {
+    // Qual caminhao este sensor representa. Precisa bater com a identificacao
+    // cadastrada em Minha Frota.
+    caminhao: '4',
+
+    temperatura:    'sensores/temperatura',
+    umidadeValor:   'sensores/umidade/valor',
+    umidadeStatus:  'sensores/umidade/status',
+  },
+
   // QoS 1 = entrega garantida pelo menos uma vez
   qos: 1,
 

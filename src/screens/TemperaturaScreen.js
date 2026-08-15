@@ -13,7 +13,7 @@
 // Os botoes de simulacao gravam uma leitura de verdade — e o que permite
 // demonstrar a tela e alimentar o Historico sem o sensor ligado.
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import { useCaminhoes } from '../context/CaminhoesContext';
 import { ZONAS, avaliarTemperatura } from '../config/temperatura';
 import { inscreverSensor } from '../services/mqtt';
 import { registrarVolumeEntregue } from '../services/caminhoes';
+import { salvarUmidade, verificarAdicaoDeAgua } from '../services/umidade';
 
 // De quanto em quanto tempo a tela reconsulta a ultima leitura
 const INTERVALO_CONSULTA_MS = 5000;
@@ -174,6 +175,34 @@ export default function TemperaturaScreen({ navigation, route }) {
     }
   }, [caminhoes, obraId, recarregarCaminhoes]);
 
+  // ── UMIDADE DA MASSA ──
+  // O sensor manda valor e status em mensagens separadas. O status fica
+  // guardado para acompanhar o proximo valor, que e quando a linha e gravada.
+  const [umidade, setUmidade] = useState({ valor: null, status: null, medidoEm: null });
+  const statusUmidadeRef = useRef(null);
+
+  const tratarUmidade = useCallback(async ({ valor, status, caminhao }) => {
+    if (status !== undefined) {
+      statusUmidadeRef.current = status;
+      setUmidade((atual) => ({ ...atual, status }));
+      return;
+    }
+
+    if (valor === undefined) return;
+
+    setUmidade({
+      valor,
+      status: statusUmidadeRef.current,
+      medidoEm: new Date().toISOString(),
+    });
+
+    await salvarUmidade(obraId, { valor, status: statusUmidadeRef.current, caminhao });
+
+    // Compara com a media do inicio da viagem: queda acentuada significa agua
+    // adicionada. Sem await — a tela nao espera a verificacao para atualizar.
+    verificarAdicaoDeAgua(obraId, caminhao, obraNome);
+  }, [obraId, obraNome]);
+
   useEffect(() => {
     if (!obraId) return;
 
@@ -194,6 +223,8 @@ export default function TemperaturaScreen({ navigation, route }) {
       //
       // E a construtora e quem mais precisa: a betoneira e dela.
       onVolume: ({ volume, caminhao }) => registrarVolumeDoSensor(caminhao, volume),
+
+      onUmidade: tratarUmidade,
 
       onEstado: setSensorConectado,
     });
@@ -389,6 +420,31 @@ export default function TemperaturaScreen({ navigation, route }) {
           </Text>
         )}
 
+        {/* ── UMIDADE DA MASSA ── */}
+        {/* Leitura bruta do sensor dentro do tambor, de 0 a 4095. Nao e
+            porcentagem de agua: e valor cru, e o que vale nele e a variacao.
+            Por isso a tela mostra o numero e o status como vieram, sem
+            traduzir para nada que o sensor nao consegue afirmar. */}
+        {umidade.valor !== null && (
+          <View style={styles.cardUmidade}>
+            <View style={styles.umidadeLinha}>
+              <Ionicons name="water-outline" size={18} color="#3B82F6" />
+              <Text style={styles.umidadeTitulo}>UMIDADE DA MASSA</Text>
+            </View>
+
+            <View style={styles.umidadeValores}>
+              <Text style={styles.umidadeValor}>{Math.round(umidade.valor)}</Text>
+              {!!umidade.status && (
+                <Text style={styles.umidadeStatus}>{umidade.status}</Text>
+              )}
+            </View>
+
+            <Text style={styles.umidadeNota}>
+              Leitura bruta do sensor · variações acentuadas indicam adição de água
+            </Text>
+          </View>
+        )}
+
         {/* ── CARD VOLUME DE CIMENTO ── */}
         <View style={styles.cardVolume}>
 
@@ -452,6 +508,39 @@ export default function TemperaturaScreen({ navigation, route }) {
 
 // ── ESTILOS ──
 const styles = StyleSheet.create({
+
+  // ── UMIDADE ──
+  cardUmidade: {
+    marginHorizontal: 16, marginBottom: 14,
+    paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: 'rgba(11, 32, 101, 0.72)',
+    borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.35)',
+    borderRadius: 16,
+  },
+
+  umidadeLinha: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
+  umidadeTitulo: {
+    color: '#3B82F6', fontSize: 10.5,
+    fontWeight: 'bold', letterSpacing: 1.2,
+  },
+
+  umidadeValores: {
+    flexDirection: 'row', alignItems: 'baseline',
+    justifyContent: 'center', gap: 12, marginTop: 10,
+  },
+
+  umidadeValor: { color: '#fff', fontSize: 30, fontWeight: 'bold' },
+
+  umidadeStatus: {
+    color: 'rgba(255,255,255,0.6)', fontSize: 14,
+    fontWeight: '600', letterSpacing: 0.5,
+  },
+
+  umidadeNota: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 10.5,
+    textAlign: 'center', marginTop: 10, lineHeight: 15,
+  },
 
   avisoSimulacao: {
     color: 'rgba(255,255,255,0.35)', fontSize: 10.5,

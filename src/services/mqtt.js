@@ -96,10 +96,16 @@ function lerFormatoLegado(texto, obraId) {
 export function inscreverSensor(
   obraId,
   caminhoes,
-  { onTemperatura = () => {}, onVolume = () => {}, onEstado = () => {} } = {}
+  {
+    onTemperatura = () => {},
+    onVolume = () => {},
+    onUmidade = () => {},
+    onEstado = () => {},
+  } = {}
 ) {
   try {
     const lista = Array.isArray(caminhoes) ? caminhoes.filter(Boolean) : [];
+    const simples = mqttConfig.sensorSimples;
 
     // Sem caminhao despachado nao ha topico especifico para assinar. Em vez de
     // ficar mudo, assina o coringa: assim da para testar com o sensor na
@@ -112,6 +118,11 @@ export function inscreverSensor(
       : [mqttConfig.topicoTemperaturaTodos, mqttConfig.topicoVolumeTodos];
 
     if (mqttConfig.topicoLegado) topicos.push(mqttConfig.topicoLegado);
+
+    // Topicos planos do sensor atual — ver a nota em config/mqttConfig.js
+    if (simples) {
+      topicos.push(simples.temperatura, simples.umidadeValor, simples.umidadeStatus);
+    }
 
     console.log(
       `[MQTT] Conectando em ${mqttConfig.host}:${mqttConfig.porta} — ` +
@@ -135,6 +146,38 @@ export function inscreverSensor(
     cliente.onMessageArrived = (mensagem) => {
       const topico = mensagem.destinationName;
       const texto = mensagem.payloadString;
+
+      // ── SENSOR ATUAL, TOPICOS PLANOS ──
+      // Sem caminhao no topico: assume o configurado, porque so existe um
+      if (simples) {
+        if (topico === simples.temperatura) {
+          const temperatura = parseFloat(texto);
+          if (isNaN(temperatura)) {
+            console.error('[MQTT] Temperatura invalida:', texto);
+            return;
+          }
+          console.log(`[MQTT] Sensor: ${temperatura} °C`);
+          onTemperatura({ temperatura, caminhao: simples.caminhao });
+          return;
+        }
+
+        if (topico === simples.umidadeValor) {
+          const valor = parseFloat(texto);
+          if (isNaN(valor)) {
+            console.error('[MQTT] Umidade invalida:', texto);
+            return;
+          }
+          console.log(`[MQTT] Sensor: umidade ${valor}`);
+          onUmidade({ valor, caminhao: simples.caminhao });
+          return;
+        }
+
+        if (topico === simples.umidadeStatus) {
+          console.log(`[MQTT] Sensor: umidade ${texto}`);
+          onUmidade({ status: texto.trim(), caminhao: simples.caminhao });
+          return;
+        }
+      }
 
       // ── FORMATO ANTIGO ──
       if (topico === mqttConfig.topicoLegado) {

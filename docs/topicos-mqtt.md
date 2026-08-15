@@ -33,6 +33,20 @@ cemtinel/caminhao/{caminhao}/temperatura
 cemtinel/caminhao/{caminhao}/volume
 ```
 
+> ### Sem acento. `caminhao`, nunca `caminhão`
+>
+> MQTT trata `caminhao` e `caminhão` como tópicos **completamente diferentes**.
+> Publicar num e assinar no outro não dá erro em lugar nenhum: a mensagem sai,
+> o broker aceita, e simplesmente ninguém recebe.
+>
+> Isso já aconteceu neste projeto — o volume ficou horas sem chegar por causa
+> de um til.
+>
+> A regra geral é não usar acento nenhum em nome de tópico. O caractere
+> acentuado vira uma sequência de bytes que depende da codificação do arquivo,
+> e o mesmo `ã` escrito em dois editores diferentes pode não ser o mesmo byte.
+> Por isso tópico é sempre ASCII simples.
+
 Exemplo real:
 
 ```
