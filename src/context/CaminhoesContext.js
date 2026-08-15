@@ -26,8 +26,11 @@ export function CaminhoesProvider({ children }) {
     try {
       setCaminhoes(await buscarEnvios());
     } catch (falha) {
+      // Mantem o que ja estava carregado. Esvaziar aqui fazia o volume, o
+      // seletor de caminhao e os totais irem a zero numa falha de rede
+      // passageira, e voltarem sozinhos na recarga seguinte — parecia que o
+      // sensor tinha zerado, quando so a consulta tinha falhado.
       console.warn('[CaminhoesContext]', falha.message);
-      setCaminhoes([]);
     } finally {
       setCarregando(false);
     }

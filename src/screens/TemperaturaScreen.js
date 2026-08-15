@@ -166,8 +166,12 @@ export default function TemperaturaScreen({ navigation, route }) {
   // A viagem que recebe e a mais recente daquele caminhao nesta obra. A lista
   // ja vem ordenada por data decrescente, entao o primeiro que casa e ela.
   const registrarVolumeDoSensor = useCallback(async (caminhao, volume) => {
+    // So a viagem ABERTA recebe leitura. Viagem concluida e historico: o
+    // caminhao ja descarregou e o numero dela nao muda mais.
     const envio = caminhoes.find(
-      (c) => c.obraId === String(obraId) && c.caminhao === caminhao
+      (c) => c.obraId === String(obraId)
+          && c.caminhao === caminhao
+          && !c.concluidoEm
     );
 
     // Descarte silencioso aqui seria cruel: o valor chegou, nao foi gravado, e

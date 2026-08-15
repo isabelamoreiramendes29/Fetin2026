@@ -23,13 +23,16 @@ function normalizarEnvio(linha) {
     // Quanto o sensor de vazao marcava no inicio desta viagem
     volumeBase: linha.volume_base === null ? null : Number(linha.volume_base),
     medidoEm: linha.medido_em,
+    // Nulo enquanto a viagem esta em andamento
+    concluidoEm: linha.concluido_em,
   };
 }
 
 // O join traz o nome da obra junto, evitando uma segunda consulta so para
 // exibir "Caminhao 4 → Obra do Centro"
 const CAMPOS =
-  'id, id_obra, caminhao, enviado_em, volume_entregue, volume_base, medido_em, obras ( nome )';
+  'id, id_obra, caminhao, enviado_em, volume_entregue, volume_base, medido_em, ' +
+  'concluido_em, obras ( nome )';
 
 // ─────────────────────────────────────────────────────────────
 // BUSCAR OS ENVIOS VISIVEIS
@@ -61,6 +64,23 @@ export async function buscarEnvios() {
 export async function registrarEnvio(obraId, caminhao) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Sua sessão expirou. Entre novamente.');
+
+  // Uma betoneira nao sai de novo sem ter descarregado. Sem esta checagem, a
+  // obra acumulava varias viagens abertas do mesmo caminhao ao mesmo tempo.
+  const { data: aberta } = await supabase
+    .from('envios_caminhao')
+    .select('id, obras ( nome )')
+    .eq('caminhao', caminhao)
+    .is('concluido_em', null)
+    .limit(1)
+    .maybeSingle();
+
+  if (aberta) {
+    const onde = aberta.obras?.nome ? ` para ${aberta.obras.nome}` : '';
+    throw new Error(
+      `O caminhão ${caminhao} já está em viagem${onde}. Conclua a entrega antes de despachá-lo de novo.`
+    );
+  }
 
   const { data, error } = await supabase
     .from('envios_caminhao')
@@ -119,6 +139,10 @@ export async function registrarVolumeEntregue(idEnvio, volume) {
   return normalizarEnvio(data);
 }
 
+// Guarda a primeira leitura baixa de cada viagem enquanto ela nao e
+// confirmada. Ver a explicacao em registrarLeituraVazao.
+const quedasPendentes = new Map();
+
 // ─────────────────────────────────────────────────────────────
 // REGISTRAR UMA LEITURA DO SENSOR DE VAZAO
 //
@@ -137,9 +161,34 @@ export async function registrarLeituraVazao(envio, leituraBruta) {
   // Primeira leitura da viagem: esta e a referencia
   if (base === null || base === undefined) base = leituraBruta;
 
-  // Leitura menor que a referencia significa que o contador do sensor foi
-  // zerado no meio da viagem — religado, reprogramado. Recomeca dali.
-  if (leituraBruta < base) base = leituraBruta;
+  // Leitura menor que a referencia sugere que o contador do sensor foi zerado
+  // — religado, reprogramado, queda de energia. Mas um unico zero passageiro
+  // (falha de comunicacao, glitch na leitura) causaria o mesmo sintoma, e
+  // adotar esse zero como referencia faria a viagem seguinte "entregar" todo o
+  // acumulado do sensor de uma vez.
+  //
+  // Por isso a queda so e aceita depois de confirmada por uma segunda leitura
+  // igualmente baixa. Uma leitura solta e descartada.
+  else if (leituraBruta < base) {
+    const quedaPendente = quedasPendentes.get(envio.id);
+
+    if (quedaPendente === undefined) {
+      quedasPendentes.set(envio.id, leituraBruta);
+      console.warn(
+        `[Caminhoes] Viagem ${envio.id}: leitura ${leituraBruta} abaixo da base ${base}. ` +
+        'Aguardando confirmacao antes de tratar como reinicio do sensor.'
+      );
+      return envio;
+    }
+
+    // Confirmou: o contador foi mesmo zerado, recomeca dali
+    console.warn(`[Caminhoes] Viagem ${envio.id}: reinicio do sensor confirmado, nova base ${leituraBruta}`);
+    quedasPendentes.delete(envio.id);
+    base = leituraBruta;
+  } else {
+    // Voltou a subir: se havia queda pendente, era ruido
+    quedasPendentes.delete(envio.id);
+  }
 
   const entregue = Number((leituraBruta - base).toFixed(2));
 
@@ -168,6 +217,31 @@ export async function registrarLeituraVazao(envio, leituraBruta) {
     `[Caminhoes] Viagem ${envio.id}: sensor em ${leituraBruta}, base ${base} → ${entregue} m³`
   );
 
+  return normalizarEnvio(data);
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONCLUIR UMA VIAGEM
+// Marca a entrega como terminada, liberando o caminhao para sair de novo.
+// A partir daqui as leituras do sensor deixam de alimentar esta viagem.
+// ─────────────────────────────────────────────────────────────
+export async function concluirViagem(idEnvio) {
+  const { data, error } = await supabase
+    .from('envios_caminhao')
+    .update({ concluido_em: new Date().toISOString() })
+    .eq('id', idEnvio)
+    .select(CAMPOS)
+    .single();
+
+  if (error) {
+    console.error('[Caminhoes] Erro ao concluir viagem:', error.message);
+    throw new Error(`Não foi possível concluir a entrega: ${error.message}`);
+  }
+
+  // A viagem terminou; a vigilancia de queda do sensor nao vale mais
+  quedasPendentes.delete(String(idEnvio));
+
+  console.log(`[Caminhoes] Viagem ${idEnvio} concluida.`);
   return normalizarEnvio(data);
 }
 

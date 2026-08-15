@@ -21,7 +21,7 @@ import { Picker } from '@react-native-picker/picker';
 import { useObras } from '../context/ObrasContext';
 import { useCaminhoes } from '../context/CaminhoesContext';
 import { buscarFrota } from '../services/frota';
-import { registrarVolumeEntregue } from '../services/caminhoes';
+import { registrarVolumeEntregue, concluirViagem } from '../services/caminhoes';
 
 const { width } = Dimensions.get('window');
 
@@ -68,6 +68,33 @@ export default function EnviarCaminhaoScreen({ navigation }) {
   function abrirVolume(envio) {
     setEnvioEmMedicao(envio);
     setVolumeTexto(envio.volumeEntregue !== null ? String(envio.volumeEntregue) : '');
+  }
+
+  // Encerrar a viagem libera o caminhao para sair de novo, e congela o numero
+  // dela: leituras posteriores do sensor deixam de alimenta-la
+  function confirmarConclusao() {
+    const envio = envioEmMedicao;
+
+    Alert.alert(
+      'Concluir entrega',
+      `Encerrar a viagem do caminhão ${envio.caminhao}?\n\n` +
+      'O volume deixa de ser atualizado pelo sensor, e o caminhão fica livre para uma nova viagem.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Concluir',
+          onPress: async () => {
+            try {
+              await concluirViagem(envio.id);
+              await recarregar();
+              setEnvioEmMedicao(null);
+            } catch (falha) {
+              Alert.alert('Erro', falha.message);
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function confirmarVolume() {
@@ -243,6 +270,7 @@ export default function EnviarCaminhaoScreen({ navigation }) {
             <Text style={styles.listaVaziaTexto}>Nenhum caminhão enviado ainda.</Text>
           ) : (
             caminhoes.map((envio) => {
+              const concluida = !!envio.concluidoEm;
               const descarregou = envio.volumeEntregue !== null;
 
               return (
@@ -272,19 +300,22 @@ export default function EnviarCaminhaoScreen({ navigation }) {
                   <View
                     style={[
                       styles.statusBadge,
-                      descarregou && { backgroundColor: 'rgba(34,197,94,0.2)' },
+                      concluida && { backgroundColor: 'rgba(148,163,184,0.18)' },
+                      !concluida && descarregou && { backgroundColor: 'rgba(34,197,94,0.2)' },
                     ]}
                   >
                     <View
                       style={[
                         styles.statusBolinha,
-                        { backgroundColor: descarregou ? '#22C55E' : '#FACC15' },
+                        { backgroundColor: concluida ? '#94A3B8' : (descarregou ? '#22C55E' : '#FACC15') },
                       ]}
                     />
                     <Text style={styles.statusTexto}>
-                      {descarregou
-                        ? `Descarregou ${envio.volumeEntregue} m³`
-                        : 'Em trânsito · toque para medir'}
+                      {concluida
+                        ? `Entregue · ${envio.volumeEntregue ?? 0} m³`
+                        : descarregou
+                          ? `Descarregando · ${envio.volumeEntregue} m³`
+                          : 'Em trânsito · toque para medir'}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -324,6 +355,16 @@ export default function EnviarCaminhaoScreen({ navigation }) {
               <Text style={styles.modalAjuda}>
                 Virá do sensor do caminhão quando o hardware estiver integrado.
               </Text>
+
+              {!envioEmMedicao.concluidoEm && (
+                <TouchableOpacity
+                  style={styles.modalBotaoConcluir}
+                  onPress={confirmarConclusao}
+                >
+                  <Ionicons name="checkmark-done" size={18} color="#22C55E" />
+                  <Text style={styles.modalBotaoConcluirTexto}>Concluir entrega</Text>
+                </TouchableOpacity>
+              )}
 
               <View style={styles.modalBotoes}>
                 <TouchableOpacity
@@ -551,7 +592,15 @@ const styles = StyleSheet.create({
     marginTop: 8, lineHeight: 16,
   },
 
-  modalBotoes: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  modalBotaoConcluir: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 48, borderRadius: 12, marginTop: 20,
+    borderWidth: 1.5, borderColor: 'rgba(34,197,94,0.55)',
+  },
+
+  modalBotaoConcluirTexto: { color: '#22C55E', fontSize: 14, fontWeight: 'bold' },
+
+  modalBotoes: { flexDirection: 'row', gap: 10, marginTop: 12 },
 
   modalBotaoCancelar: {
     flex: 1, height: 48, borderRadius: 12,

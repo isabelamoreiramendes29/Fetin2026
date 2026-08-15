@@ -28,9 +28,10 @@ export function ObrasProvider({ children }) {
     try {
       setObras(await buscarObras());
     } catch (falha) {
+      // Mesma razao do CaminhoesContext: falha de rede passageira nao pode
+      // fazer as obras sumirem da tela. Marca o erro, mantem a lista.
       console.warn('[ObrasContext]', falha.message);
       setErro(falha.message);
-      setObras([]);
     } finally {
       setCarregando(false);
     }
