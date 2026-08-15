@@ -27,13 +27,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import VelocimetroTemperatura from '../components/VelocimetroTemperatura';
 import { salvarLeitura, buscarUltimaLeitura } from '../services/historico';
+import { buscarUltimaUmidade } from '../services/umidade';
 import { buscarCompras } from '../services/financeiro';
 import { totalEntregue } from '../services/caminhoes';
 import { useObras } from '../context/ObrasContext';
 import { useCaminhoes } from '../context/CaminhoesContext';
 import { ZONAS, avaliarTemperatura } from '../config/temperatura';
+import { corDoCaminhao } from '../services/planta';
 import { inscreverSensor } from '../services/mqtt';
-import { registrarVolumeEntregue } from '../services/caminhoes';
+import { registrarLeituraVazao } from '../services/caminhoes';
 import { salvarUmidade, verificarAdicaoDeAgua } from '../services/umidade';
 
 // De quanto em quanto tempo a tela reconsulta a ultima leitura
@@ -90,7 +92,30 @@ export default function TemperaturaScreen({ navigation, route }) {
       .catch((falha) => console.warn('[Temperatura] Compras:', falha.message));
   }, [obraId]);
 
-  // Busca a ultima leitura gravada da obra
+  // ── CAMINHAO EM FOCO ──
+  // Temperatura, umidade e volume sao da CARGA, nao da obra: cada betoneira
+  // traz um concreto diferente. Uma obra recebe varias ao longo da
+  // concretagem, e misturar as leituras numa serie so descreveria nenhuma
+  // delas. Por isso a tela mostra um caminhao de cada vez.
+  const caminhoesDaObra = [...new Set(
+    caminhoes.filter((c) => c.obraId === String(obraId)).map((c) => c.caminhao)
+  )];
+
+  // Chave estavel para as dependencias, ja que a lista e recriada a cada render
+  const chaveCaminhoes = caminhoesDaObra.join(',');
+
+  const [caminhaoSelecionado, setCaminhaoSelecionado] = useState(null);
+
+  // Escolhe o primeiro assim que a lista chega, para a tela nunca abrir sem
+  // caminhao nenhum selecionado
+  useEffect(() => {
+    setCaminhaoSelecionado((atual) => {
+      if (atual && caminhoesDaObra.includes(atual)) return atual;
+      return caminhoesDaObra[0] || null;
+    });
+  }, [chaveCaminhoes]);
+
+  // Busca a ultima temperatura e a ultima umidade do caminhao em foco
   const carregar = useCallback(async () => {
     if (!obraId) {
       console.warn('[Temperatura] Nenhuma obra selecionada!');
@@ -98,15 +123,24 @@ export default function TemperaturaScreen({ navigation, route }) {
     }
 
     try {
-      const ultima = await buscarUltimaLeitura(obraId);
-      if (!ultima) return;
+      const [ultima, ultimaUmidade] = await Promise.all([
+        buscarUltimaLeitura(obraId, caminhaoSelecionado),
+        buscarUltimaUmidade(obraId, caminhaoSelecionado),
+      ]);
 
-      setTemperatura(ultima.temperatura);
-      setMedidoEm(ultima.medidoEm);
+      if (ultima) {
+        setTemperatura(ultima.temperatura);
+        setMedidoEm(ultima.medidoEm);
+      }
+
+      if (ultimaUmidade) {
+        setUmidade(ultimaUmidade);
+        statusUmidadeRef.current = ultimaUmidade.status;
+      }
     } catch (falha) {
       console.warn('[Temperatura]', falha.message);
     }
-  }, [obraId]);
+  }, [obraId, caminhaoSelecionado]);
 
   // Consulta ao abrir e periodicamente. Continua valendo mesmo com o MQTT
   // ligado: se outro aparelho ou o servico de gravacao registrar uma leitura,
@@ -124,54 +158,47 @@ export default function TemperaturaScreen({ navigation, route }) {
   // duas vezes se os dois estiverem com o app aberto.
   const [sensorConectado, setSensorConectado] = useState(false);
 
-  // O sensor publica por caminhao, nao por obra — ele nao sabe para onde esta
-  // indo. Quem faz a ponte e esta lista: os caminhoes despachados para esta
-  // obra definem quais topicos assinar.
-  const caminhoesDaObra = caminhoes
-    .filter((c) => c.obraId === String(obraId))
-    .map((c) => c.caminhao);
-
-  // Chave estavel para a lista, para o efeito nao reassinar a cada render
-  const chaveCaminhoes = caminhoesDaObra.join(',');
-
-  // O volume chega uma vez, no fim da descarga. Ele pertence a viagem mais
-  // recente daquele caminhao que ainda nao foi medida.
+  // Sensor de vazao ACUMULA: manda 5, depois 12, depois 27, conforme a
+  // descarga avanca. Por isso a leitura atualiza a viagem, em vez de so
+  // preencher a que estiver vazia — a primeira versao travava no primeiro
+  // valor e descartava todos os seguintes.
+  //
+  // A viagem que recebe e a mais recente daquele caminhao nesta obra. A lista
+  // ja vem ordenada por data decrescente, entao o primeiro que casa e ela.
   const registrarVolumeDoSensor = useCallback(async (caminhao, volume) => {
     const envio = caminhoes.find(
-      (c) => c.obraId === String(obraId)
-          && c.caminhao === caminhao
-          && c.volumeEntregue === null
+      (c) => c.obraId === String(obraId) && c.caminhao === caminhao
     );
 
     // Descarte silencioso aqui seria cruel: o valor chegou, nao foi gravado, e
     // ninguem saberia por que. Melhor a tela dizer o que faltou.
     if (!envio) {
-      const despachados = caminhoes
-        .filter((c) => c.obraId === String(obraId) && c.volumeEntregue === null)
-        .map((c) => c.caminhao);
+      const despachados = [...new Set(
+        caminhoes.filter((c) => c.obraId === String(obraId)).map((c) => c.caminhao)
+      )];
 
       console.warn(
-        `[Temperatura] Volume de ${volume} m³ do caminhao ${caminhao} chegou sem viagem pendente`
+        `[Temperatura] Volume de ${volume} m³ do caminhao ${caminhao} chegou sem viagem`
       );
 
       Alert.alert(
         'Volume sem viagem correspondente',
-        `Chegou ${volume} m³ do caminhão ${caminhao}, mas não há viagem dele aguardando medição nesta obra.\n\n` +
+        `Chegou ${volume} m³ do caminhão ${caminhao}, mas ele não foi despachado para esta obra.\n\n` +
         (despachados.length
-          ? `Aguardando medição: ${despachados.join(', ')}.`
-          : 'Nenhum caminhão desta obra está aguardando medição.') +
+          ? `Caminhões desta obra: ${despachados.join(', ')}.`
+          : 'Nenhum caminhão foi despachado para esta obra.') +
         '\n\nDespache o caminhão em Enviar Caminhão antes de medir o volume.'
       );
       return;
     }
 
     try {
-      await registrarVolumeEntregue(envio.id, volume);
-      await recarregarCaminhoes();
-      console.log(`[Temperatura] Volume ${volume} m³ registrado na viagem ${envio.id}`);
+      // A leitura e bruta e acumulada: o servico desconta a referencia da
+      // viagem para chegar ao que foi entregue nesta descarga
+      const atualizado = await registrarLeituraVazao(envio, volume);
+      if (atualizado !== envio) await recarregarCaminhoes();
     } catch (falha) {
       console.warn('[Temperatura]', falha.message);
-      Alert.alert('Erro', falha.message);
     }
   }, [caminhoes, obraId, recarregarCaminhoes]);
 
@@ -182,58 +209,84 @@ export default function TemperaturaScreen({ navigation, route }) {
   const statusUmidadeRef = useRef(null);
 
   const tratarUmidade = useCallback(async ({ valor, status, caminhao }) => {
+    // A tela mostra um caminhao de cada vez, mas grava tudo: leitura de outro
+    // caminhao entra no banco e aparece quando ele for selecionado
+    const emFoco = !caminhaoSelecionado || caminhao === caminhaoSelecionado;
+
     if (status !== undefined) {
-      statusUmidadeRef.current = status;
-      setUmidade((atual) => ({ ...atual, status }));
+      if (emFoco) {
+        statusUmidadeRef.current = status;
+        setUmidade((atual) => ({ ...atual, status }));
+      }
       return;
     }
 
     if (valor === undefined) return;
 
-    setUmidade({
-      valor,
-      status: statusUmidadeRef.current,
-      medidoEm: new Date().toISOString(),
-    });
+    if (emFoco) {
+      setUmidade({
+        valor,
+        status: statusUmidadeRef.current,
+        medidoEm: new Date().toISOString(),
+      });
+    }
 
     await salvarUmidade(obraId, { valor, status: statusUmidadeRef.current, caminhao });
 
     // Compara com a media do inicio da viagem: queda acentuada significa agua
     // adicionada. Sem await — a tela nao espera a verificacao para atualizar.
     verificarAdicaoDeAgua(obraId, caminhao, obraNome);
-  }, [obraId, obraNome]);
+  }, [obraId, obraNome, caminhaoSelecionado]);
 
+  // Os manipuladores mudam a cada render, porque dependem de `caminhoes` — que
+  // o Context recarrega justamente quando um volume e gravado. Se eles
+  // entrassem nas dependencias do efeito abaixo, cada leitura de volume
+  // desconectaria e reconectaria o MQTT, e as mensagens seguintes se perderiam
+  // no vaivem. Guardados aqui, o efeito le sempre a versao mais recente sem
+  // precisar reassinar.
+  const manipuladores = useRef({});
+
+  manipuladores.current = {
+    temperatura: ({ temperatura: valor, caminhao }) => {
+      // Grava sempre; exibe so o caminhao em foco
+      if (!somenteLeitura) {
+        salvarLeitura(obraId, valor, { obraNome, caminhao });
+      }
+
+      if (caminhaoSelecionado && caminhao !== caminhaoSelecionado) return;
+
+      setTemperatura(valor);
+      setMedidoEm(new Date().toISOString());
+    },
+
+    // Volume grava nos dois perfis, diferente da temperatura. Temperatura
+    // ACRESCENTA uma linha por leitura — dois aparelhos gravando criariam
+    // duplicatas. Volume PREENCHE um campo de uma viagem: se os dois gravarem,
+    // o segundo escreve o mesmo valor no mesmo lugar.
+    //
+    // E a construtora e quem mais precisa: a betoneira e dela.
+    volume: ({ volume, caminhao }) => registrarVolumeDoSensor(caminhao, volume),
+
+    umidade: tratarUmidade,
+  };
+
+  // So a obra e a lista de caminhoes exigem reassinar. Todo o resto passa pela
+  // referencia acima.
   useEffect(() => {
     if (!obraId) return;
 
     const desinscrever = inscreverSensor(obraId, caminhoesDaObra, {
-      onTemperatura: ({ temperatura: valor, caminhao }) => {
-        setTemperatura(valor);
-        setMedidoEm(new Date().toISOString());
-
-        if (!somenteLeitura) {
-          salvarLeitura(obraId, valor, { obraNome, caminhao });
-        }
-      },
-
-      // Volume grava nos dois perfis, diferente da temperatura. Temperatura
-      // ACRESCENTA uma linha por leitura — dois aparelhos gravando criariam
-      // duplicatas. Volume PREENCHE um campo de uma viagem: se os dois
-      // gravarem, o segundo escreve o mesmo valor no mesmo lugar.
-      //
-      // E a construtora e quem mais precisa: a betoneira e dela.
-      onVolume: ({ volume, caminhao }) => registrarVolumeDoSensor(caminhao, volume),
-
-      onUmidade: tratarUmidade,
-
-      onEstado: setSensorConectado,
+      onTemperatura: (dados) => manipuladores.current.temperatura(dados),
+      onVolume:      (dados) => manipuladores.current.volume(dados),
+      onUmidade:     (dados) => manipuladores.current.umidade(dados),
+      onEstado:      setSensorConectado,
     });
 
     return () => {
       if (desinscrever) desinscrever();
     };
     // chaveCaminhoes no lugar da lista: array novo a cada render reassinaria sempre
-  }, [obraId, obraNome, somenteLeitura, chaveCaminhoes, registrarVolumeDoSensor]);
+  }, [obraId, chaveCaminhoes]);
 
   // Botao de simulacao: grava uma leitura de verdade, para a tela e o Historico
   // se comportarem exatamente como se comportarao com o sensor ligado
@@ -338,6 +391,56 @@ export default function TemperaturaScreen({ navigation, route }) {
 
         {/* ── NOME DA OBRA ── */}
         <Text style={styles.nomeObra}>{obraNome}</Text>
+
+        {/* ── SELETOR DE CAMINHAO ── */}
+        {/* Tudo abaixo daqui e da CARGA daquele caminhao: temperatura, umidade
+            e volume. Aparece a partir de um caminhao, mesmo com um so, porque
+            deixa explicito de quem sao os numeros na tela. */}
+        {caminhoesDaObra.length > 0 && (
+          <View style={styles.seletor}>
+            {caminhoesDaObra.map((c) => {
+              const escolhido = c === caminhaoSelecionado;
+              const cor = corDoCaminhao(c);
+
+              return (
+                <TouchableOpacity
+                  key={c}
+                  // Selecionado ganha o fundo na cor do caminhao, nao so uma
+                  // borda: sobre fundo escuro, borda colorida quase nao se ve
+                  style={[
+                    styles.seletorItem,
+                    escolhido
+                      ? { backgroundColor: cor, borderColor: cor }
+                      : { borderColor: 'rgba(255,255,255,0.25)' },
+                  ]}
+                  onPress={() => setCaminhaoSelecionado(c)}
+                  activeOpacity={0.8}
+                >
+                  {!escolhido && (
+                    <View style={[styles.seletorPonto, { backgroundColor: cor }]} />
+                  )}
+                  {escolhido && (
+                    <Ionicons name="checkmark-circle" size={15} color="#fff" />
+                  )}
+                  <Text
+                    style={[
+                      styles.seletorTexto,
+                      escolhido && { fontWeight: 'bold' },
+                    ]}
+                  >
+                    Caminhão {c}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {caminhoesDaObra.length === 0 && (
+          <Text style={styles.semCaminhao}>
+            Nenhum caminhão despachado para esta obra
+          </Text>
+        )}
 
         {/* ── ESTADO DO SENSOR E DA ULTIMA LEITURA ── */}
         {/* Duas informacoes diferentes de proposito: o sensor pode estar
@@ -508,6 +611,29 @@ export default function TemperaturaScreen({ navigation, route }) {
 
 // ── ESTILOS ──
 const styles = StyleSheet.create({
+
+  // ── SELETOR DE CAMINHÃO ──
+  seletor: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 16, marginBottom: 14,
+  },
+
+  seletorItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 8, paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+  },
+
+  seletorPonto: { width: 9, height: 9, borderRadius: 5 },
+
+  seletorTexto: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  semCaminhao: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 12,
+    textAlign: 'center', fontStyle: 'italic', marginBottom: 14,
+  },
 
   // ── UMIDADE ──
   cardUmidade: {

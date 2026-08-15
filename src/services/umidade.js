@@ -65,6 +65,38 @@ export async function salvarUmidade(obraId, { valor, status, caminhao }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// ULTIMA LEITURA DE UMIDADE
+// Alimenta a tela quando ela abre ou quando troca de caminhao — sem isso, o
+// card so apareceria depois da proxima publicacao do sensor.
+// ─────────────────────────────────────────────────────────────
+export async function buscarUltimaUmidade(obraId, caminhao = null) {
+  let consulta = supabase
+    .from('leituras_umidade')
+    .select('valor, status, medido_em')
+    .eq('id_obra', String(obraId));
+
+  if (caminhao) consulta = consulta.eq('caminhao', caminhao);
+
+  const { data, error } = await consulta
+    .order('medido_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[Umidade] Erro ao buscar ultima leitura:', error.message);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    valor: Number(data.valor),
+    status: data.status,
+    medidoEm: data.medido_em,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // LEITURAS DE UM CAMINHAO NUMA OBRA
 // Em ordem cronologica, para a deteccao comparar o agora com o comeco.
 // ─────────────────────────────────────────────────────────────

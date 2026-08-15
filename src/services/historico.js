@@ -20,7 +20,12 @@ import { verificarTemperatura } from './alertas';
 export async function salvarLeitura(obraId, temperatura, contexto = {}) {
   const { error } = await supabase
     .from('leituras_temperatura')
-    .insert({ id_obra: String(obraId), temperatura });
+    .insert({
+      id_obra: String(obraId),
+      temperatura,
+      // De qual caminhao veio. Nulo quando o sensor nao identifica.
+      caminhao: contexto.caminhao || null,
+    });
 
   if (error) {
     console.warn('[Historico] Nao gravou a leitura:', error.message);
@@ -47,11 +52,17 @@ const JANELA_CURTA_MS = 2 * 60 * 60 * 1000; // 2 horas
 //
 // Retorna null quando a obra ainda nao tem leitura — nao e erro.
 // ─────────────────────────────────────────────────────────────
-export async function buscarUltimaLeitura(obraId) {
-  const { data, error } = await supabase
+export async function buscarUltimaLeitura(obraId, caminhao = null) {
+  let consulta = supabase
     .from('leituras_temperatura')
     .select('temperatura, medido_em')
-    .eq('id_obra', String(obraId))
+    .eq('id_obra', String(obraId));
+
+  // Sem caminhao informado, devolve a ultima da obra — vale para leituras
+  // antigas, gravadas antes de a coluna existir
+  if (caminhao) consulta = consulta.eq('caminhao', caminhao);
+
+  const { data, error } = await consulta
     .order('medido_em', { ascending: false })
     .limit(1)
     .maybeSingle();

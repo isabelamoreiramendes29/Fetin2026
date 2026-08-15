@@ -87,10 +87,50 @@ const mqttConfig = {
     // cadastrada em Minha Frota.
     caminhao: '4',
 
-    temperatura:    'sensores/temperatura',
-    umidadeValor:   'sensores/umidade/valor',
-    umidadeStatus:  'sensores/umidade/status',
+    // Assina TUDO embaixo de sensores/ em vez de listar cada topico.
+    //
+    // O motivo: os nomes foram descobertos escutando o broker, um de cada vez,
+    // e cada descoberta custou horas. Temperatura e umidade apareceram; o de
+    // vazao nao, porque so publica quando algo flui. Com o coringa, qualquer
+    // topico novo que o firmware criar chega sem precisar mexer no app.
+    raiz: 'sensores/#',
+
+    // O reconhecimento e pelo FINAL do topico, nao pelo nome inteiro. Assim
+    // funciona tanto para 'sensores/volume' quanto para 'sensores/vazao/total'
+    // — nao e preciso adivinhar a hierarquia que ele escolheu.
+    //
+    // TEMPERATURA E VOLUME FICARAM DE FORA DE PROPOSITO. O firmware publica os
+    // dois tambem em cemtinel/caminhao/{n}/..., e com as duas assinaturas
+    // ativas cada leitura era gravada duas vezes. A umidade continua aqui
+    // porque so existe neste formato — nao ha cemtinel/caminhao/{n}/umidade.
+    //
+    // Se ele um dia migrar a umidade para o formato novo, esta secao inteira
+    // pode sair. Se voltar a publicar so no plano, devolva temperatura e
+    // volume a lista.
+    sufixos: {
+      umidadeValor:  ['umidade/valor', 'umidade'],
+      umidadeStatus: ['umidade/status'],
+    },
   },
+
+  // ─────────────────────────────────────────────────────────────
+  // UNIDADE DO SENSOR DE VAZAO
+  //
+  // O app trabalha em metros cubicos, mas sensor de vazao quase nunca publica
+  // nessa unidade — o comum e litro, as vezes pulso do rotor. Este fator
+  // converte o que chega para m³.
+  //
+  //   sensor publica em LITROS  → 0.001   (1000 L = 1 m³)
+  //   sensor publica em m³      → 1
+  //   sensor publica em MILILITROS → 0.000001
+  //
+  // Como saber qual: passe uma quantidade conhecida de agua e compare. Um
+  // balde de 10 litros que faz o numero subir 10 significa litros; se subir
+  // 10000, mililitros.
+  //
+  // Sem isso o app leu 13343 como 13343 m³ — mais que varias piscinas
+  // olimpicas, quando eram 13,3 m³ de concreto.
+  fatorVolume: 0.001,
 
   // QoS 1 = entrega garantida pelo menos uma vez
   qos: 1,

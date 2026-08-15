@@ -20,6 +20,8 @@ function normalizarEnvio(linha) {
     dataEnvio: linha.enviado_em,
     // Nulo enquanto o caminhao nao descarregou
     volumeEntregue: linha.volume_entregue === null ? null : Number(linha.volume_entregue),
+    // Quanto o sensor de vazao marcava no inicio desta viagem
+    volumeBase: linha.volume_base === null ? null : Number(linha.volume_base),
     medidoEm: linha.medido_em,
   };
 }
@@ -27,7 +29,7 @@ function normalizarEnvio(linha) {
 // O join traz o nome da obra junto, evitando uma segunda consulta so para
 // exibir "Caminhao 4 → Obra do Centro"
 const CAMPOS =
-  'id, id_obra, caminhao, enviado_em, volume_entregue, medido_em, obras ( nome )';
+  'id, id_obra, caminhao, enviado_em, volume_entregue, volume_base, medido_em, obras ( nome )';
 
 // ─────────────────────────────────────────────────────────────
 // BUSCAR OS ENVIOS VISIVEIS
@@ -114,6 +116,58 @@ export async function registrarVolumeEntregue(idEnvio, volume) {
   }
 
   console.log(`[Caminhoes] Envio ${idEnvio} descarregou ${volume} m³.`);
+  return normalizarEnvio(data);
+}
+
+// ─────────────────────────────────────────────────────────────
+// REGISTRAR UMA LEITURA DO SENSOR DE VAZAO
+//
+// O sensor acumula desde que foi ligado, e nao zera entre viagens. Se ele ja
+// marcava 27 m³ quando a viagem comecou, a viagem entregou zero — nao 27.
+//
+// Por isso a primeira leitura de cada viagem vira a REFERENCIA, e o volume
+// entregue passa a ser a diferenca. Assim nao e preciso zerar o contador do
+// sensor nem reiniciar o ESP32 entre uma viagem e outra.
+//
+// `leituraBruta` e o numero cru que veio do sensor.
+// ─────────────────────────────────────────────────────────────
+export async function registrarLeituraVazao(envio, leituraBruta) {
+  let base = envio.volumeBase;
+
+  // Primeira leitura da viagem: esta e a referencia
+  if (base === null || base === undefined) base = leituraBruta;
+
+  // Leitura menor que a referencia significa que o contador do sensor foi
+  // zerado no meio da viagem — religado, reprogramado. Recomeca dali.
+  if (leituraBruta < base) base = leituraBruta;
+
+  const entregue = Number((leituraBruta - base).toFixed(2));
+
+  // Nada mudou desde a ultima gravacao: nao vale ida ao banco
+  if (envio.volumeBase === base && envio.volumeEntregue === entregue) {
+    return envio;
+  }
+
+  const { data, error } = await supabase
+    .from('envios_caminhao')
+    .update({
+      volume_base: base,
+      volume_entregue: entregue,
+      medido_em: new Date().toISOString(),
+    })
+    .eq('id', envio.id)
+    .select(CAMPOS)
+    .single();
+
+  if (error) {
+    console.error('[Caminhoes] Erro ao registrar vazao:', error.message);
+    throw new Error(`Não foi possível registrar o volume: ${error.message}`);
+  }
+
+  console.log(
+    `[Caminhoes] Viagem ${envio.id}: sensor em ${leituraBruta}, base ${base} → ${entregue} m³`
+  );
+
   return normalizarEnvio(data);
 }
 

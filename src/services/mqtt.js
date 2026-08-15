@@ -120,9 +120,7 @@ export function inscreverSensor(
     if (mqttConfig.topicoLegado) topicos.push(mqttConfig.topicoLegado);
 
     // Topicos planos do sensor atual — ver a nota em config/mqttConfig.js
-    if (simples) {
-      topicos.push(simples.temperatura, simples.umidadeValor, simples.umidadeStatus);
-    }
+    if (simples) topicos.push(simples.raiz);
 
     console.log(
       `[MQTT] Conectando em ${mqttConfig.host}:${mqttConfig.porta} — ` +
@@ -148,35 +146,40 @@ export function inscreverSensor(
       const texto = mensagem.payloadString;
 
       // ── SENSOR ATUAL, TOPICOS PLANOS ──
-      // Sem caminhao no topico: assume o configurado, porque so existe um
-      if (simples) {
-        if (topico === simples.temperatura) {
-          const temperatura = parseFloat(texto);
-          if (isNaN(temperatura)) {
-            console.error('[MQTT] Temperatura invalida:', texto);
-            return;
-          }
-          console.log(`[MQTT] Sensor: ${temperatura} °C`);
-          onTemperatura({ temperatura, caminhao: simples.caminhao });
+      // Reconhece pelo final do topico, nao pelo nome inteiro: assim funciona
+      // com qualquer hierarquia que o firmware use embaixo de sensores/.
+      // Sem caminhao no topico, assume o configurado — so existe um sensor.
+      if (simples && topico.startsWith(simples.raiz.replace('#', ''))) {
+        const caminho = topico.toLowerCase();
+        const sufixos = simples.sufixos;
+        const combina = (lista) => lista.some((s) => caminho.endsWith(s));
+
+        // Status antes de valor: 'umidade/status' tambem termina com o que
+        // 'umidade' casaria
+        if (combina(sufixos.umidadeStatus)) {
+          console.log(`[MQTT] Sensor · ${topico}: ${texto}`);
+          onUmidade({ status: texto.trim(), caminhao: simples.caminhao });
           return;
         }
 
-        if (topico === simples.umidadeValor) {
+        if (combina(sufixos.umidadeValor)) {
           const valor = parseFloat(texto);
           if (isNaN(valor)) {
-            console.error('[MQTT] Umidade invalida:', texto);
+            console.error(`[MQTT] Umidade invalida em ${topico}:`, texto);
             return;
           }
-          console.log(`[MQTT] Sensor: umidade ${valor}`);
+          console.log(`[MQTT] Sensor · ${topico}: umidade ${valor}`);
           onUmidade({ valor, caminhao: simples.caminhao });
           return;
         }
 
-        if (topico === simples.umidadeStatus) {
-          console.log(`[MQTT] Sensor: umidade ${texto}`);
-          onUmidade({ status: texto.trim(), caminhao: simples.caminhao });
-          return;
-        }
+        // Chegou algo embaixo de sensores/ que este ramo nao trata. Pode ser a
+        // temperatura ou o volume duplicados, que sao lidos pelo formato
+        // cemtinel/caminhao/{n}/..., ou um topico novo que ninguem mencionou.
+        // Registrar em vez de ignorar calado: e assim que se descobre o que
+        // esta faltando.
+        console.log(`[MQTT] Ignorado (formato plano) — ${topico}: ${texto}`);
+        return;
       }
 
       // ── FORMATO ANTIGO ──
@@ -205,12 +208,16 @@ export function inscreverSensor(
 
       // ── VOLUME ──
       if (topico.endsWith('/volume')) {
-        const volume = lerValor(texto, 'volume', 'volume_entregue');
-        if (volume === null) {
+        const bruto = lerValor(texto, 'volume', 'volume_entregue');
+        if (bruto === null) {
           console.error('[MQTT] Volume invalido:', texto);
           return;
         }
-        console.log(`[MQTT] Caminhao ${caminhao} descarregou ${volume} m³`);
+
+        // O sensor publica em litros ou pulsos; o app trabalha em m³
+        const volume = bruto * mqttConfig.fatorVolume;
+
+        console.log(`[MQTT] Caminhao ${caminhao}: ${bruto} do sensor → ${volume.toFixed(2)} m³`);
         onVolume({ volume, caminhao });
       }
     };
