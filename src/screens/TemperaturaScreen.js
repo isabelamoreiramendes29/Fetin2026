@@ -382,7 +382,7 @@ export default function TemperaturaScreen({ navigation, route }) {
 
           {/* Titulo + linha decorativa verde centralizada */}
           <View style={styles.tituloContainer}>
-            <Text style={styles.titulo}>Temperatura</Text>
+            <Text style={styles.titulo}>Monitoramento</Text>
             <View style={styles.linhaDecorada} />
           </View>
 

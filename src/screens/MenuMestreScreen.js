@@ -38,7 +38,7 @@ export default function MenuMestreScreen({ navigation, route }) {
       id: 'temperatura',
       icone: 'thermometer-outline',
       tipoIcone: 'Ionicons',
-      texto: 'Temperatura e Volume',
+      texto: 'Monitoramento',
       tela: 'Temperatura',
     },
     {

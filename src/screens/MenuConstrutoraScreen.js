@@ -60,7 +60,7 @@ export default function MenuConstrutoraScreen({ navigation, route }) {
       id: 'monitorar-temperatura',
       icone: 'thermometer-outline',
       tipoIcone: 'Ionicons',
-      texto: 'Monitorar Temperatura',
+      texto: 'Monitoramento',
       // Mesma tela do mestre, sem os botoes de medicao: quem mede e quem esta
       // no canteiro recebendo o concreto
       tela: 'Temperatura',
