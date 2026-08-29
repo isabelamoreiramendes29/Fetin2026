@@ -90,7 +90,7 @@ export default function PlantaInterativa({
 
         {/* ── REGIOES JA SALVAS ── */}
         {regioes.map((regiao) => {
-          const { cor, tracejado } = avaliarRegiao(regiao, fckProjeto);
+          const { cor } = avaliarRegiao(regiao, fckProjeto);
           const centro = paraPixels(centroAproximado(regiao.pontos));
 
           return (
@@ -98,13 +98,9 @@ export default function PlantaInterativa({
               <Polygon
                 points={paraSvg(regiao.pontos)}
                 fill={cor}
-                // Area reforcada fica mais transparente e com borda tracejada:
-                // e verde porque esta resolvida, mas nao pode se confundir com
-                // quem passou no ensaio de primeira
-                fillOpacity={tracejado ? 0.2 : 0.35}
+                fillOpacity={0.35}
                 stroke={cor}
                 strokeWidth={2.5}
-                strokeDasharray={tracejado ? '9,5' : undefined}
                 onPress={() => onTocarRegiao?.(regiao)}
               />
               <SvgText

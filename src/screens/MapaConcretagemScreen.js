@@ -35,7 +35,6 @@ import {
   enviarPlanta,
   salvarRegiao,
   lancarResultado,
-  registrarReforco,
   removerRegiao,
   avaliarRegiao,
   situacaoGeral,
@@ -76,7 +75,6 @@ export default function MapaConcretagemScreen({ navigation, route }) {
 
   const [regiaoAberta, setRegiaoAberta] = useState(null);
   const [mpaTexto, setMpaTexto]         = useState('');
-  const [reforcoTexto, setReforcoTexto] = useState('');
 
   // ── CARREGAMENTO ──
   const carregar = useCallback(async () => {
@@ -205,7 +203,6 @@ export default function MapaConcretagemScreen({ navigation, route }) {
   function abrirRegiao(regiao) {
     setRegiaoAberta(regiao);
     setMpaTexto(regiao.resultadoMpa != null ? String(regiao.resultadoMpa) : '');
-    setReforcoTexto(regiao.reforcoDescricao || '');
   }
 
   // Substitui a regiao na lista em memoria pela versao devolvida pelo banco,
@@ -216,19 +213,6 @@ export default function MapaConcretagemScreen({ navigation, route }) {
       regioes: atual.regioes.map((r) => (r.id === atualizada.id ? atualizada : r)),
     }));
     setRegiaoAberta(null);
-  }
-
-  async function confirmarReforco() {
-    if (!reforcoTexto.trim()) {
-      Alert.alert('Reforço', 'Descreva o reforço executado nesta área.');
-      return;
-    }
-
-    try {
-      atualizarRegiaoNaTela(await registrarReforco(regiaoAberta.id, reforcoTexto.trim()));
-    } catch (falha) {
-      Alert.alert('Erro', falha.message);
-    }
   }
 
   async function confirmarResultado() {
@@ -270,7 +254,8 @@ export default function MapaConcretagemScreen({ navigation, route }) {
 
   // ── RESUMO PARA OS CARDS ──
   // Passa por avaliarRegiao para que "reprovada" conte so o que ainda nao
-  // recebeu reforco — area tratada nao e mais pendencia
+  // Passa por avaliarRegiao para os contadores lerem os mesmos estados que a
+  // planta desenha
   const regioes = planta?.regioes || [];
   const avaliacoes = planta ? regioes.map((r) => avaliarRegiao(r, planta.fckProjeto)) : [];
 
@@ -532,15 +517,9 @@ export default function MapaConcretagemScreen({ navigation, route }) {
                 </Text>
               </View>
               <View style={styles.legendaLinha}>
-                <View style={[styles.legendaCor, styles.legendaCorTracejada]} />
-                <Text style={styles.legendaTexto}>
-                  Reforçado — reprovou e recebeu reforço estrutural
-                </Text>
-              </View>
-              <View style={styles.legendaLinha}>
                 <View style={[styles.legendaCor, { backgroundColor: '#DC2626' }]} />
                 <Text style={styles.legendaTexto}>
-                  Reprovado — abaixo de {planta.fckProjeto} MPa, sem tratamento
+                  Reprovado — abaixo de {planta.fckProjeto} MPa
                 </Text>
               </View>
             </View>
@@ -642,23 +621,6 @@ export default function MapaConcretagemScreen({ navigation, route }) {
                 </View>
               )}
 
-              {/* Historico do reforco — fica visivel para os dois perfis, porque
-                  e justamente o rastro que o mapa precisa preservar */}
-              {regiaoAberta.dataReforco && (
-                <>
-                  <View style={styles.detalheLinha}>
-                    <Text style={styles.detalheLabel}>Reforçado em</Text>
-                    <Text style={styles.detalheValor}>
-                      {formatarData(regiaoAberta.dataReforco)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.detalheBloco}>
-                    <Text style={styles.detalheLabel}>Reforço executado</Text>
-                    <Text style={styles.detalheTexto}>{regiaoAberta.reforcoDescricao}</Text>
-                  </View>
-                </>
-              )}
 
               {/* Em modo consulta o resultado e so mais uma linha de leitura;
                   quem lanca e remove e a construtora */}
@@ -703,35 +665,6 @@ export default function MapaConcretagemScreen({ navigation, route }) {
                       {regiaoAberta.resultadoMpa != null ? 'Atualizar resultado' : 'Lançar resultado'}
                     </Text>
                   </TouchableOpacity>
-
-                  {/* Reforco estrutural — so aparece depois que o ensaio reprovou.
-                      Nao faz sentido registrar tratamento em area aprovada nem em
-                      area cujo corpo de prova ainda nem foi rompido. */}
-                  {(avaliacaoAberta.status === 'reprovado' ||
-                    avaliacaoAberta.status === 'resolvido') && (
-                    <>
-                      <View style={styles.separadorModal} />
-
-                      <Text style={styles.campoLabel}>Reforço executado</Text>
-                      <TextInput
-                        style={[styles.modalInput, styles.modalInputAlto]}
-                        value={reforcoTexto}
-                        onChangeText={setReforcoTexto}
-                        placeholder="Ex: encamisamento com fibra de carbono"
-                        placeholderTextColor="rgba(255,255,255,0.35)"
-                        multiline
-                      />
-
-                      <TouchableOpacity
-                        style={styles.modalBotaoConfirmarLargo}
-                        onPress={confirmarReforco}
-                      >
-                        <Text style={styles.modalBotaoConfirmarTexto}>
-                          {regiaoAberta.dataReforco ? 'Atualizar reforço' : 'Registrar reforço'}
-                        </Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
 
                   <View style={styles.modalBotoes}>
                     <TouchableOpacity style={styles.modalBotaoCancelar} onPress={confirmarRemocao}>
@@ -923,12 +856,6 @@ const styles = StyleSheet.create({
 
   legendaCor: { width: 16, height: 16, borderRadius: 4 },
 
-  // Espelha o tracejado que o poligano reforcado recebe na planta
-  legendaCorTracejada: {
-    backgroundColor: 'rgba(34, 197, 94, 0.25)',
-    borderWidth: 1.5, borderColor: '#22C55E', borderStyle: 'dashed',
-  },
-
   legendaTexto: { color: 'rgba(255,255,255,0.7)', fontSize: 12, flex: 1 },
 
   // ── ESTADOS VAZIOS ──
@@ -956,7 +883,7 @@ const styles = StyleSheet.create({
 
   modalCaixa: {
     width: '100%',
-    // Limita a altura porque o painel da regiao cresce quando ha reforco
+    // Limita a altura para o painel nunca ultrapassar a tela
     maxHeight: '85%',
     backgroundColor: '#0B2065',
     borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.4)',
@@ -1018,19 +945,4 @@ const styles = StyleSheet.create({
 
   detalheValor: { color: '#fff', fontSize: 13, fontWeight: '600' },
 
-  // Texto longo (descricao do reforco) ocupa a linha inteira, nao a coluna
-  detalheBloco: {
-    paddingVertical: 9,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-
-  detalheTexto: {
-    color: '#fff', fontSize: 13, lineHeight: 19, marginTop: 4,
-  },
-
-  separadorModal: {
-    height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginTop: 20,
-  },
-
-  modalInputAlto: { height: 88, paddingTop: 14, textAlignVertical: 'top' },
 });

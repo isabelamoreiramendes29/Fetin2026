@@ -37,16 +37,16 @@ export function corDoCaminhao(caminhao) {
 
 // ─────────────────────────────────────────────────────────────
 // AVALIAR UMA REGIAO
-// Traduz o resultado do laboratorio em status, cor e tracejado para a tela.
+// Traduz o resultado do laboratorio em status e cor para a tela.
 //
-// Sao quatro estados, e a distincao entre os dois ultimos importa:
+// Tres estados:
 //   pendente  — corpo de prova ainda nao rompido (leva 28 dias)
-//   aprovado  — atingiu o fck de primeira (verde solido)
-//   resolvido — reprovou, mas recebeu reforco estrutural (verde tracejado)
-//   reprovado — abaixo do fck e ainda sem tratamento (vermelho)
+//   aprovado  — atingiu o fck (verde)
+//   reprovado — abaixo do fck (vermelho)
 //
-// "resolvido" nao vira "aprovado" de proposito: a area teve um problema, e o
-// mapa precisa continuar mostrando isso mesmo depois de corrigida.
+// O que fazer com uma area reprovada — reforcar, extrair testemunho, aceitar
+// tecnicamente — e decisao de engenharia, tomada fora do app. Ele registra o
+// resultado do ensaio, que e o fato; o tratamento nao entra aqui.
 // ─────────────────────────────────────────────────────────────
 export function avaliarRegiao(regiao, fckProjeto) {
   if (regiao.resultadoMpa === null || regiao.resultadoMpa === undefined) {
@@ -54,24 +54,14 @@ export function avaliarRegiao(regiao, fckProjeto) {
       status: 'pendente',
       cor: corDoCaminhao(regiao.caminhao),
       rotulo: 'Aguardando rompimento',
-      tracejado: false,
     };
   }
 
   if (Number(regiao.resultadoMpa) >= Number(fckProjeto)) {
-    return { status: 'aprovado', cor: '#22C55E', rotulo: 'Aprovado', tracejado: false };
+    return { status: 'aprovado', cor: '#22C55E', rotulo: 'Aprovado' };
   }
 
-  if (regiao.dataReforco) {
-    return {
-      status: 'resolvido',
-      cor: '#22C55E',
-      rotulo: 'Reforçado',
-      tracejado: true,
-    };
-  }
-
-  return { status: 'reprovado', cor: '#DC2626', rotulo: 'Reprovado', tracejado: false };
+  return { status: 'reprovado', cor: '#DC2626', rotulo: 'Reprovado' };
 }
 
 // Converte a linha do banco (snake_case) para o formato usado no app
@@ -84,8 +74,6 @@ function normalizarRegiao(linha) {
     resultadoMpa: linha.resultado_mpa === null ? null : Number(linha.resultado_mpa),
     dataRompimento: linha.data_rompimento,
     dataConcretagem: linha.data_concretagem,
-    reforcoDescricao: linha.reforco_descricao,
-    dataReforco: linha.data_reforco,
   };
 }
 
@@ -93,7 +81,7 @@ function normalizarRegiao(linha) {
 // a tabela ganha campo novo
 const CAMPOS_REGIAO =
   'id, caminhao, pontos, corpo_prova, resultado_mpa, data_rompimento, ' +
-  'data_concretagem, reforco_descricao, data_reforco';
+  'data_concretagem';
 
 // ─────────────────────────────────────────────────────────────
 // BUSCAR A PLANTA DE UMA OBRA, COM SUAS REGIOES
@@ -265,36 +253,10 @@ export async function lancarResultado(idRegiao, resultadoMpa) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// REGISTRAR REFORCO ESTRUTURAL NUMA AREA REPROVADA
-// Nao altera o resultado_mpa: o ensaio deu o que deu, e esse numero fica.
-// O que muda e que a area passa a ter um tratamento registrado, e a tela
-// mostra isso como "Reforçado" — verde tracejado, distinto de aprovado.
-// ─────────────────────────────────────────────────────────────
-export async function registrarReforco(idRegiao, descricao) {
-  const { data, error } = await supabase
-    .from('regioes_concretagem')
-    .update({
-      reforco_descricao: descricao,
-      data_reforco: new Date().toISOString(),
-    })
-    .eq('id', idRegiao)
-    .select(CAMPOS_REGIAO)
-    .single();
-
-  if (error) {
-    console.error('[Planta] Erro ao registrar reforco:', error.message);
-    throw new Error(`Falha ao registrar o reforço: ${error.message}`);
-  }
-
-  console.log(`[Planta] Reforco registrado na regiao ${idRegiao}.`);
-  return normalizarRegiao(data);
-}
-
-// ─────────────────────────────────────────────────────────────
 // SITUACAO GERAL DA CONCRETAGEM
 // Resume o estado das areas para o selo no topo da tela. A ordem das
-// verificacoes e proposital: reprovacao sem tratamento e o que mais pesa,
-// entao aparece antes de qualquer outra pendencia.
+// verificacoes e proposital: area reprovada e o que mais pesa, entao aparece
+// antes de qualquer outra pendencia.
 // ─────────────────────────────────────────────────────────────
 export function situacaoGeral(regioes, fckProjeto) {
   if (regioes.length === 0) {
@@ -309,8 +271,8 @@ export function situacaoGeral(regioes, fckProjeto) {
       status: 'reprovado',
       cor: '#DC2626',
       texto: reprovadas === 1
-        ? '1 área reprovada aguardando reforço'
-        : `${reprovadas} áreas reprovadas aguardando reforço`,
+        ? '1 área reprovada no ensaio'
+        : `${reprovadas} áreas reprovadas no ensaio`,
     };
   }
 
@@ -325,13 +287,10 @@ export function situacaoGeral(regioes, fckProjeto) {
     };
   }
 
-  const reforcadas = avaliadas.filter((a) => a.status === 'resolvido').length;
   return {
     status: 'liberado',
     cor: '#22C55E',
-    texto: reforcadas > 0
-      ? `Todas as áreas liberadas (${reforcadas} com reforço)`
-      : 'Todas as áreas liberadas',
+    texto: 'Todas as áreas aprovadas',
   };
 }
 
