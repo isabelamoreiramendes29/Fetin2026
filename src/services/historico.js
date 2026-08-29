@@ -42,7 +42,8 @@ export async function salvarLeitura(obraId, temperatura, contexto = {}) {
 
 // Quando as leituras cabem nesta janela, agrupamos de 5 em 5 minutos
 // em vez de por hora (ver agruparLeituras)
-const JANELA_CURTA_MS = 2 * 60 * 60 * 1000; // 2 horas
+// Os limites das faixas vivem dentro de agruparLeituras, junto da razao de
+// cada um existir
 
 // ─────────────────────────────────────────────────────────────
 // ULTIMA LEITURA REGISTRADA DE UMA OBRA
@@ -81,36 +82,6 @@ export async function buscarUltimaLeitura(obraId, caminhao = null) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LEITURAS BRUTAS DE UM INTERVALO
-// Sem agrupamento: o calculo de maturidade integra a curva ponto a ponto, e
-// agrupar por faixa horaria jogaria fora justamente a variacao que importa.
-//
-// `ate` opcional — sem ele, vai ate agora.
-// ─────────────────────────────────────────────────────────────
-export async function buscarLeiturasBrutas(obraId, desde, ate = null) {
-  let consulta = supabase
-    .from('leituras_temperatura')
-    .select('temperatura, medido_em')
-    .eq('id_obra', String(obraId))
-    .gte('medido_em', new Date(desde).toISOString())
-    .order('medido_em', { ascending: true });
-
-  if (ate) consulta = consulta.lte('medido_em', new Date(ate).toISOString());
-
-  const { data, error } = await consulta;
-
-  if (error) {
-    console.error('[Historico] Erro ao buscar leituras brutas:', error.message);
-    throw new Error('Não foi possível carregar as leituras.');
-  }
-
-  return data.map((linha) => ({
-    temperatura: Number(linha.temperatura),
-    medidoEm: linha.medido_em,
-  }));
-}
-
-// ─────────────────────────────────────────────────────────────
 // AGRUPAR LEITURAS
 // O sensor publica em intervalos irregulares — varias leituras por minuto.
 // Mostrar cada uma deixaria o grafico ilegivel, entao elas sao agrupadas
@@ -128,31 +99,51 @@ function agruparLeituras(leituras) {
 
   const instantes = leituras.map((l) => new Date(l.medido_em).getTime());
   const intervalo = Math.max(...instantes) - Math.min(...instantes);
-  const porMinuto = intervalo <= JANELA_CURTA_MS;
+
+  // Tres faixas, e a mais fina existe por experiencia propria: com faixa
+  // minima de 5 minutos, um teste de tres minutos virava um unico ponto — e
+  // com um ponto so, minima, maxima e ultima medicao mostravam o mesmo numero.
+  let tamanhoMs;
+  let comSegundos = false;
+
+  if (intervalo <= 10 * 60 * 1000) {          // ate 10 minutos
+    tamanhoMs = 30 * 1000;                    // faixas de 30 segundos
+    comSegundos = true;
+  } else if (intervalo <= 2 * 60 * 60 * 1000) { // ate 2 horas
+    tamanhoMs = 5 * 60 * 1000;                // faixas de 5 minutos
+  } else {
+    tamanhoMs = 60 * 60 * 1000;               // faixas de 1 hora
+  }
 
   const faixas = new Map();
 
   leituras.forEach(({ temperatura, medido_em }) => {
-    const data = new Date(medido_em);
+    const instante = new Date(medido_em).getTime();
 
-    // Rotulo da faixa: 'HH:MM' arredondado para baixo (5 min), ou 'HH:00'
-    const minuto = porMinuto ? Math.floor(data.getMinutes() / 5) * 5 : 0;
-    const rotulo =
-      `${String(data.getHours()).padStart(2, '0')}:` +
-      `${String(minuto).padStart(2, '0')}`;
+    // A chave e o inicio da faixa em milissegundos. Agrupar pelo numero, e nao
+    // pelo texto do horario, faz a ordenacao sair certa mesmo quando a serie
+    // atravessa a meia-noite.
+    const inicio = Math.floor(instante / tamanhoMs) * tamanhoMs;
 
-    const faixa = faixas.get(rotulo) || { soma: 0, quantidade: 0 };
+    const faixa = faixas.get(inicio) || { soma: 0, quantidade: 0 };
     faixa.soma += Number(temperatura);
     faixa.quantidade += 1;
-    faixas.set(rotulo, faixa);
+    faixas.set(inicio, faixa);
   });
 
   return Array.from(faixas.entries())
-    .map(([hora, { soma, quantidade }]) => ({
-      hora,
-      temp: Math.round((soma / quantidade) * 10) / 10,
-    }))
-    .sort((a, b) => a.hora.localeCompare(b.hora));
+    .sort(([a], [b]) => a - b)
+    .map(([inicio, { soma, quantidade }]) => {
+      const d = new Date(inicio);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+
+      return {
+        hora: comSegundos ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`,
+        temp: Math.round((soma / quantidade) * 10) / 10,
+      };
+    });
 }
 
 // ─────────────────────────────────────────────────────────────

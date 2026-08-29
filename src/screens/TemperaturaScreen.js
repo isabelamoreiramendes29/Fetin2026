@@ -27,7 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import VelocimetroTemperatura from '../components/VelocimetroTemperatura';
 import { salvarLeitura, buscarUltimaLeitura } from '../services/historico';
-import { buscarUltimaUmidade } from '../services/umidade';
+import { resumoUmidade, classificarUmidade } from '../services/umidade';
 import { buscarCompras } from '../services/financeiro';
 import { totalEntregue } from '../services/caminhoes';
 import { useObras } from '../context/ObrasContext';
@@ -40,6 +40,15 @@ import { salvarUmidade, verificarAdicaoDeAgua } from '../services/umidade';
 
 // De quanto em quanto tempo a tela reconsulta a ultima leitura
 const INTERVALO_CONSULTA_MS = 5000;
+
+// Data em texto → milissegundos, para comparar duas leituras pelo instante.
+// Ausente vira 0, ou seja, "mais antigo que qualquer coisa" — e o que faz a
+// primeira leitura sempre entrar.
+function instanteDe(iso) {
+  if (!iso) return 0;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
 
 const { width } = Dimensions.get('window');
 
@@ -73,11 +82,19 @@ function formatarQuando(iso) {
 export default function TemperaturaScreen({ navigation, route }) {
   const { obraId, obraNome, somenteLeitura = false } = route.params;
 
-  // 75 °C (zona NORMAL) e so o valor mostrado ate a primeira consulta voltar
-  const [temperatura, setTemperatura] = useState(75);
+  // 22 °C (meio da zona IDEAL) e so o valor mostrado ate a primeira consulta
+  // voltar. Precisa ficar dentro da escala de 5 a 40 °C: o valor antigo era 75,
+  // sobra da epoca em que a escala ia ate 100, e abria a tela com o ponteiro
+  // cravado em CRITICA antes de qualquer leitura existir.
+  const [temperatura, setTemperatura] = useState(22);
 
   // Quando a leitura exibida foi medida. null = a obra ainda nao tem leitura.
   const [medidoEm, setMedidoEm] = useState(null);
+
+  // Espelho em ref, para a consulta periodica comparar sem virar dependencia
+  // dela — se entrasse nas dependencias, o intervalo se recriaria a cada leitura
+  const medidoEmRef = useRef(null);
+  medidoEmRef.current = medidoEm;
 
   // Fontes dos tres volumes: a obra traz o planejado, as compras trazem o
   // comprado, e os envios trazem o que o sensor mediu na descarga
@@ -123,19 +140,31 @@ export default function TemperaturaScreen({ navigation, route }) {
     }
 
     try {
-      const [ultima, ultimaUmidade] = await Promise.all([
+      const [ultima, resumo] = await Promise.all([
         buscarUltimaLeitura(obraId, caminhaoSelecionado),
-        buscarUltimaUmidade(obraId, caminhaoSelecionado),
+        resumoUmidade(obraId, caminhaoSelecionado),
       ]);
 
-      if (ultima) {
+      // So aplica se for MAIS RECENTE que o valor exibido. Sem isso, a consulta
+      // periodica atropelava a leitura recem-chegada do sensor: no modo somente
+      // leitura nada e gravado, entao o banco devolvia um valor antigo e a tela
+      // voltava para ele a cada cinco segundos.
+      //
+      // A comparacao e por INSTANTE, nunca por texto. Os dois lados escrevem a
+      // data em formatos diferentes — o MQTT usa new Date().toISOString(), que
+      // termina em 'Z', e o Postgres devolve '+00:00'. Como '+' vem antes de 'Z'
+      // na tabela de caracteres, comparar como string fazia o valor do banco
+      // parecer sempre mais antigo, e a tela congelava na ultima leitura do
+      // sensor sem nunca mais aceitar nada.
+      if (ultima && instanteDe(ultima.medidoEm) > instanteDe(medidoEmRef.current)) {
         setTemperatura(ultima.temperatura);
         setMedidoEm(ultima.medidoEm);
       }
 
-      if (ultimaUmidade) {
-        setUmidade(ultimaUmidade);
-        statusUmidadeRef.current = ultimaUmidade.status;
+      if (resumo) {
+        setUmidade(resumo);
+        statusUmidadeRef.current = resumo.statusSensor;
+        mediaBaseRef.current = resumo.mediaBase;
       }
     } catch (falha) {
       console.warn('[Temperatura]', falha.message);
@@ -209,8 +238,17 @@ export default function TemperaturaScreen({ navigation, route }) {
   // ── UMIDADE DA MASSA ──
   // O sensor manda valor e status em mensagens separadas. O status fica
   // guardado para acompanhar o proximo valor, que e quando a linha e gravada.
-  const [umidade, setUmidade] = useState({ valor: null, status: null, medidoEm: null });
+  //
+  // O estado guardado ja e o CLASSIFICADO (ver classificarUmidade): a tela nao
+  // mostra o numero cru do sensor como informacao principal, porque 4095 nao
+  // significa nada para quem olha. Ela mostra se a massa mudou desde que saiu.
+  const [umidade, setUmidade] = useState(() => classificarUmidade({ valorAtual: null }));
   const statusUmidadeRef = useRef(null);
+
+  // Media das primeiras leituras da viagem, vinda da ultima consulta ao banco.
+  // Guardada aqui para a leitura que chega pelo MQTT ser classificada na hora,
+  // sem esperar a proxima consulta.
+  const mediaBaseRef = useRef(null);
 
   const tratarUmidade = useCallback(async ({ valor, status, caminhao }) => {
     // A tela mostra um caminhao de cada vez, mas grava tudo: leitura de outro
@@ -220,7 +258,7 @@ export default function TemperaturaScreen({ navigation, route }) {
     if (status !== undefined) {
       if (emFoco) {
         statusUmidadeRef.current = status;
-        setUmidade((atual) => ({ ...atual, status }));
+        setUmidade((atual) => ({ ...atual, statusSensor: status }));
       }
       return;
     }
@@ -229,8 +267,13 @@ export default function TemperaturaScreen({ navigation, route }) {
 
     if (emFoco) {
       setUmidade({
+        ...classificarUmidade({
+          mediaBase: mediaBaseRef.current,
+          valorAtual: valor,
+          temBase: mediaBaseRef.current !== null,
+        }),
         valor,
-        status: statusUmidadeRef.current,
+        statusSensor: statusUmidadeRef.current,
         medidoEm: new Date().toISOString(),
       });
     }
@@ -319,9 +362,16 @@ export default function TemperaturaScreen({ navigation, route }) {
   const larguraBarra = volumePlanejado > 0
     ? Math.min(volumeEntregue / volumePlanejado, 1)
     : 0;
-  const porcentagemVolume = volumePlanejado > 0
-    ? Math.round((volumeEntregue / volumePlanejado) * 100)
+  // Uma casa decimal enquanto o avanco e pequeno. Com o volume entregue em
+  // fracoes de m³ contra uma obra de dezenas, o arredondamento inteiro deixava
+  // a porcentagem parada em 0 enquanto o numero ao lado ja se mexia.
+  const pctBruta = volumePlanejado > 0
+    ? (volumeEntregue / volumePlanejado) * 100
     : 0;
+
+  const porcentagemVolume = pctBruta > 0 && pctBruta < 10
+    ? Number(pctBruta.toFixed(1))
+    : Math.round(pctBruta);
 
   // O status compara ENTREGUE com COMPRADO — e a diferenca que custa dinheiro.
   // Pagar por 8 m³ e receber 7,4 e o tipo de perda que passa despercebida.
@@ -528,29 +578,72 @@ export default function TemperaturaScreen({ navigation, route }) {
         )}
 
         {/* ── UMIDADE DA MASSA ── */}
-        {/* Leitura bruta do sensor dentro do tambor, de 0 a 4095. Nao e
-            porcentagem de agua: e valor cru, e o que vale nele e a variacao.
-            Por isso a tela mostra o numero e o status como vieram, sem
-            traduzir para nada que o sensor nao consegue afirmar. */}
-        {umidade.valor !== null && (
-          <View style={styles.cardUmidade}>
-            <View style={styles.umidadeLinha}>
-              <Ionicons name="water-outline" size={18} color="#3B82F6" />
-              <Text style={styles.umidadeTitulo}>UMIDADE DA MASSA</Text>
-            </View>
+        {/* O sensor manda um numero de 0 a 4095, que so significa alguma coisa
+            para quem conhece a sonda. Quem le esta tela — mestre de obra,
+            cliente, banca — nao conhece.
 
-            <View style={styles.umidadeValores}>
-              <Text style={styles.umidadeValor}>{Math.round(umidade.valor)}</Text>
-              {!!umidade.status && (
-                <Text style={styles.umidadeStatus}>{umidade.status}</Text>
-              )}
-            </View>
+            Entao a informacao principal e o ESTADO em palavras, e a pergunta
+            respondida e "a massa esta como saiu da usina?". O numero cru fica
+            no rodape, em letra pequena, para quem quiser conferir.
 
-            <Text style={styles.umidadeNota}>
-              Leitura bruta do sensor · variações acentuadas indicam adição de água
+            O card aparece sempre, mesmo sem leitura: escondido, ele fazia uma
+            falha do sensor parecer funcionalidade inexistente. */}
+        <View style={styles.cardUmidade}>
+          <View style={styles.umidadeLinha}>
+            <Ionicons name="water-outline" size={18} color="#3B82F6" />
+            <Text style={styles.umidadeTitulo}>UMIDADE DA MASSA</Text>
+          </View>
+
+          <View style={styles.umidadeEstadoLinha}>
+            <View style={[styles.umidadePonto, { backgroundColor: umidade.cor }]} />
+            <Text style={[styles.umidadeEstado, { color: umidade.cor }]}>
+              {umidade.rotulo}
             </Text>
           </View>
-        )}
+
+          <Text style={styles.umidadeExplicacao}>{umidade.explicacao}</Text>
+
+          {/* A barra so existe quando ha referencia: sem as primeiras leituras
+              da viagem nao ha com o que comparar, e uma barra sem comparacao
+              seria decoracao. */}
+          {umidade.variacaoPct !== null && (
+            <View style={styles.umidadeBarraBloco}>
+              <View style={styles.umidadeTrilho}>
+                <LinearGradient
+                  colors={['#22C55E', '#FACC15', '#DC2626']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.umidadeTrilhoFundo}
+                />
+                <View
+                  style={[styles.umidadeAgulha, { left: `${umidade.posicao * 100}%` }]}
+                />
+              </View>
+
+              <View style={styles.umidadeEscala}>
+                <Text style={styles.umidadeEscalaTexto}>como saiu</Text>
+                <Text style={styles.umidadeEscalaTexto}>mais líquida</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Numeros por ultimo e discretos: servem a quem entende do sensor,
+              e nao podem ser a primeira coisa que a tela diz. */}
+          <View style={styles.umidadeRodape}>
+            {umidade.variacaoPct !== null && (
+              <Text style={styles.umidadeRodapeTexto}>
+                Variação desde a saída: {umidade.variacaoPct > 0 ? '+' : ''}
+                {umidade.variacaoPct.toFixed(0)}%
+              </Text>
+            )}
+            {umidade.valor !== null && (
+              <Text style={styles.umidadeRodapeTexto}>
+                Leitura do sensor: {Math.round(umidade.valor)}
+                {umidade.statusSensor ? ` · ${umidade.statusSensor}` : ''}
+              </Text>
+            )}
+          </View>
+        </View>
 
         {/* ── CARD VOLUME DE CIMENTO ── */}
         <View style={styles.cardVolume}>
@@ -655,21 +748,63 @@ const styles = StyleSheet.create({
     fontWeight: 'bold', letterSpacing: 1.2,
   },
 
-  umidadeValores: {
-    flexDirection: 'row', alignItems: 'baseline',
-    justifyContent: 'center', gap: 12, marginTop: 10,
+  // ── ESTADO EM PALAVRAS ──
+  // E a informacao principal do card, entao tem o maior corpo de texto e a
+  // cor do proprio estado
+  umidadeEstadoLinha: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 8, marginTop: 12,
   },
 
-  umidadeValor: { color: '#fff', fontSize: 30, fontWeight: 'bold' },
+  umidadePonto: { width: 9, height: 9, borderRadius: 5 },
 
-  umidadeStatus: {
-    color: 'rgba(255,255,255,0.6)', fontSize: 14,
-    fontWeight: '600', letterSpacing: 0.5,
+  umidadeEstado: { fontSize: 17, fontWeight: 'bold' },
+
+  umidadeExplicacao: {
+    color: 'rgba(255,255,255,0.62)', fontSize: 13,
+    lineHeight: 18, marginTop: 4,
   },
 
-  umidadeNota: {
-    color: 'rgba(255,255,255,0.35)', fontSize: 10.5,
-    textAlign: 'center', marginTop: 10, lineHeight: 15,
+  // ── BARRA DE VARIACAO ──
+  umidadeBarraBloco: { marginTop: 16 },
+
+  umidadeTrilho: { height: 10, borderRadius: 5, justifyContent: 'center' },
+
+  umidadeTrilhoFundo: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 5, opacity: 0.55,
+  },
+
+  // marginLeft negativa = metade da largura, para o centro da agulha cair
+  // exatamente na posicao calculada, e nao a borda esquerda dela
+  umidadeAgulha: {
+    position: 'absolute',
+    width: 14, height: 14, marginLeft: -7,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    borderWidth: 2.5, borderColor: 'rgba(11, 32, 101, 0.9)',
+  },
+
+  umidadeEscala: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    marginTop: 7,
+  },
+
+  umidadeEscalaTexto: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 10.5,
+  },
+
+  // ── RODAPE TECNICO ──
+  // Onde o numero cru vive agora: disponivel para quem entende, longe de
+  // quem nao entende
+  umidadeRodape: {
+    marginTop: 14, paddingTop: 10,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.09)',
+    gap: 3,
+  },
+
+  umidadeRodapeTexto: {
+    color: 'rgba(255,255,255,0.38)', fontSize: 11,
   },
 
   avisoSimulacao: {

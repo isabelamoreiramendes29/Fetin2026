@@ -34,7 +34,7 @@ const mqttConfig = {
   // ATENCAO: a versao antiga do projeto tinha 192.168.66.73 num campo e
   // 192.168.66.68 em outro. Confirme o valor atual antes de testar — IP de
   // rede local muda quando o roteador redistribui os enderecos.
-  host: '192.168.66.55',
+  host: '10.176.18.220',
 
   // Porta WebSocket do Mosquitto. Precisa ser a de WebSocket, nao a 1883:
   // React Native nao fala TCP puro, so WebSocket.

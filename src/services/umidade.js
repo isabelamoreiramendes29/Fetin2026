@@ -65,38 +65,6 @@ export async function salvarUmidade(obraId, { valor, status, caminhao }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ULTIMA LEITURA DE UMIDADE
-// Alimenta a tela quando ela abre ou quando troca de caminhao — sem isso, o
-// card so apareceria depois da proxima publicacao do sensor.
-// ─────────────────────────────────────────────────────────────
-export async function buscarUltimaUmidade(obraId, caminhao = null) {
-  let consulta = supabase
-    .from('leituras_umidade')
-    .select('valor, status, medido_em')
-    .eq('id_obra', String(obraId));
-
-  if (caminhao) consulta = consulta.eq('caminhao', caminhao);
-
-  const { data, error } = await consulta
-    .order('medido_em', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.warn('[Umidade] Erro ao buscar ultima leitura:', error.message);
-    return null;
-  }
-
-  if (!data) return null;
-
-  return {
-    valor: Number(data.valor),
-    status: data.status,
-    medidoEm: data.medido_em,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────
 // LEITURAS DE UM CAMINHAO NUMA OBRA
 // Em ordem cronologica, para a deteccao comparar o agora com o comeco.
 // ─────────────────────────────────────────────────────────────
@@ -153,6 +121,146 @@ export function avaliarVariacao(leituras) {
     variacaoPct,
     caminhao: atual.caminhao,
     medidoEm: atual.medidoEm,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// ESTADO DA MASSA, EM LINGUAGEM DE GENTE
+//
+// O sensor publica um numero de 0 a 4095 — a leitura crua do conversor do
+// ESP32. Esse numero nao diz nada para quem nao conhece o sensor, e ninguem
+// que olha a tela conhece: nem o mestre de obra, nem o cliente, nem a banca.
+//
+// Traduzir para "a massa tem X% de agua" resolveria a legibilidade e seria
+// mentira: sensor de umidade de solo dentro de concreto nao mede teor de agua,
+// mede conducao eletrica entre dois pontos. O numero absoluto depende da
+// posicao do sensor, do traco, da temperatura e do desgaste da sonda.
+//
+// O que ele mede de verdade e MUDANCA. Entao e a mudanca que a tela mostra:
+// a massa esta como saiu da usina, ou esta mais liquida do que saiu? Essa
+// pergunta qualquer pessoa entende, e o sensor sabe responder.
+//
+// A barra vai de 0% (como saiu) a -30% (bem mais liquida). O limite de
+// suspeita, 15%, cai exatamente no meio dela.
+// ─────────────────────────────────────────────────────────────
+
+// Ja da para desconfiar, mas ainda nao e o suficiente para acusar
+const ATENCAO_PCT = 8;
+
+// Fim da escala da barra na tela
+const ESCALA_BARRA_PCT = 30;
+
+export const ESTADOS_UMIDADE = {
+  aguardando: {
+    rotulo: 'Aguardando leitura',
+    explicacao: 'O sensor da betoneira ainda não enviou nenhuma medida.',
+    cor: '#64748B',
+  },
+  referencia: {
+    rotulo: 'Medindo a referência',
+    explicacao: 'As primeiras leituras da viagem viram o ponto de comparação.',
+    cor: '#64748B',
+  },
+  estavel: {
+    rotulo: 'Massa estável',
+    explicacao: 'A mistura está como saiu da usina.',
+    cor: '#22C55E',
+  },
+  atencao: {
+    rotulo: 'Variação incomum',
+    explicacao: 'A massa está mais líquida que na saída. Vale verificar.',
+    cor: '#FACC15',
+  },
+  agua: {
+    rotulo: 'Possível adição de água',
+    explicacao: 'A massa ficou bem mais líquida do que saiu da usina.',
+    cor: '#DC2626',
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// CLASSIFICAR
+// Recebe a media da base e a leitura atual, devolve tudo o que a tela precisa
+// desenhar. Funcao pura de proposito: da para testar sem banco e sem sensor.
+// ─────────────────────────────────────────────────────────────
+export function classificarUmidade({ mediaBase, valorAtual, temBase }) {
+  if (valorAtual === null || valorAtual === undefined) {
+    return { estado: 'aguardando', variacaoPct: null, posicao: 0, ...ESTADOS_UMIDADE.aguardando };
+  }
+
+  if (!temBase || !mediaBase) {
+    return { estado: 'referencia', variacaoPct: null, posicao: 0, ...ESTADOS_UMIDADE.referencia };
+  }
+
+  const variacaoPct = ((valorAtual - mediaBase) / mediaBase) * 100;
+
+  // Queda = mais agua. Subida = a massa secou, que nao e o risco vigiado aqui,
+  // entao o ponteiro fica no inicio da escala.
+  const quedaPct = Math.max(-variacaoPct, 0);
+  const posicao = Math.min(quedaPct / ESCALA_BARRA_PCT, 1);
+
+  let estado = 'estavel';
+  if (quedaPct >= VARIACAO_SUSPEITA_PCT) estado = 'agua';
+  else if (quedaPct >= ATENCAO_PCT) estado = 'atencao';
+
+  return {
+    estado,
+    variacaoPct,
+    posicao,
+    ...ESTADOS_UMIDADE[estado],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// RESUMO PARA A TELA
+// Duas consultas pequenas em vez de trazer a viagem inteira: as primeiras
+// leituras (a referencia) e a ultima (o agora). A tela chama isso a cada
+// poucos segundos, entao o peso da consulta importa.
+// ─────────────────────────────────────────────────────────────
+export async function resumoUmidade(obraId, caminhao = null) {
+  const base = supabase
+    .from('leituras_umidade')
+    .select('valor')
+    .eq('id_obra', String(obraId))
+    .order('medido_em', { ascending: true })
+    .limit(LEITURAS_BASE);
+
+  const agora = supabase
+    .from('leituras_umidade')
+    .select('valor, status, medido_em')
+    .eq('id_obra', String(obraId))
+    .order('medido_em', { ascending: false })
+    .limit(1);
+
+  if (caminhao) {
+    base.eq('caminhao', caminhao);
+    agora.eq('caminhao', caminhao);
+  }
+
+  const [respBase, respAgora] = await Promise.all([base, agora]);
+
+  if (respBase.error || respAgora.error) {
+    console.warn('[Umidade] Erro no resumo:', (respBase.error || respAgora.error).message);
+    return null;
+  }
+
+  const atual = respAgora.data?.[0];
+  if (!atual) return { ...classificarUmidade({ valorAtual: null }), valor: null, statusSensor: null, medidoEm: null };
+
+  const amostras = respBase.data || [];
+  const temBase = amostras.length >= LEITURAS_BASE;
+  const mediaBase = temBase
+    ? amostras.reduce((s, l) => s + Number(l.valor), 0) / amostras.length
+    : null;
+
+  return {
+    ...classificarUmidade({ mediaBase, valorAtual: Number(atual.valor), temBase }),
+    valor: Number(atual.valor),
+    statusSensor: atual.status,
+    medidoEm: atual.medido_em,
+    // Vai junto para a tela poder classificar sozinha a leitura que chegar
+    // pelo MQTT, sem ter que consultar o banco a cada mensagem do sensor
+    mediaBase: temBase ? mediaBase : null,
   };
 }
 
