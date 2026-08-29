@@ -49,13 +49,6 @@ export default function MenuMestreScreen({ navigation, route }) {
       tela: 'HistoricoTemperatura',
     },
     {
-      id: 'previsao',
-      icone: 'chart-bell-curve',
-      tipoIcone: 'MaterialCommunityIcons',
-      texto: 'Previsão de resistência',
-      tela: 'PrevisaoResistencia',
-    },
-    {
       id: 'financeiro',
       icone: 'currency-usd',
       tipoIcone: 'MaterialCommunityIcons',

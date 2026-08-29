@@ -20,7 +20,6 @@ import MenuMestreScreen from '../screens/MenuMestreScreen';
 // ── TELAS DO MENU DO MESTRE ──
 import TemperaturaScreen from '../screens/TemperaturaScreen';
 import HistoricoTemperaturaScreen from '../screens/HistoricoTemperaturaScreen';
-import PrevisaoResistenciaScreen from '../screens/PrevisaoResistenciaScreen';
 import AlertasScreen from '../screens/AlertasScreen';
 import DetalhesObraScreen from '../screens/DetalhesObraScreen';
 import FinanceiroScreen from '../screens/FinanceiroScreen';
@@ -66,7 +65,6 @@ export default function AppNavigator() {
         {/* ── TELAS DO MENU DO MESTRE ── */}
         <Stack.Screen name="Temperatura"          component={TemperaturaScreen} />
         <Stack.Screen name="HistoricoTemperatura" component={HistoricoTemperaturaScreen} />
-        <Stack.Screen name="PrevisaoResistencia"  component={PrevisaoResistenciaScreen} />
         <Stack.Screen name="Alertas"              component={AlertasScreen} />
         <Stack.Screen name="DetalhesObra"         component={DetalhesObraScreen} />
         <Stack.Screen name="Financeiro"           component={FinanceiroScreen} />
