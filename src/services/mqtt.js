@@ -14,6 +14,7 @@
 
 import Paho from 'paho-mqtt';
 import mqttConfig from '../config/mqttConfig';
+import { hostAtual } from './configBroker';
 
 // Cada conexao recebe um ID diferente: dois clientes com o mesmo ID derrubam
 // um ao outro no broker
@@ -100,6 +101,7 @@ export function inscreverSensor(
     onTemperatura = () => {},
     onVolume = () => {},
     onUmidade = () => {},
+    onPosicao = () => {},
     onEstado = () => {},
   } = {}
 ) {
@@ -114,8 +116,13 @@ export function inscreverSensor(
       ? lista.flatMap((c) => [
           mqttConfig.topicoTemperatura(c),
           mqttConfig.topicoVolume(c),
+          mqttConfig.topicoPosicao(c),
         ])
-      : [mqttConfig.topicoTemperaturaTodos, mqttConfig.topicoVolumeTodos];
+      : [
+          mqttConfig.topicoTemperaturaTodos,
+          mqttConfig.topicoVolumeTodos,
+          mqttConfig.topicoPosicaoTodos,
+        ];
 
     if (mqttConfig.topicoLegado) topicos.push(mqttConfig.topicoLegado);
 
@@ -123,12 +130,14 @@ export function inscreverSensor(
     if (simples) topicos.push(simples.raiz);
 
     console.log(
-      `[MQTT] Conectando em ${mqttConfig.host}:${mqttConfig.porta} — ` +
+      `[MQTT] Conectando em ${hostAtual()}:${mqttConfig.porta} — ` +
       `${lista.length ? `caminhoes ${lista.join(', ')}` : 'todos os caminhoes'}`
     );
 
+    // O endereco vem de configBroker, nao de mqttConfig: num APK instalado
+    // nao existe codigo para editar, e a rede muda a cada lugar.
     const cliente = new Paho.Client(
-      mqttConfig.host,
+      hostAtual(),
       mqttConfig.porta,
       mqttConfig.caminho,
       gerarClientId()
@@ -140,6 +149,11 @@ export function inscreverSensor(
         console.warn('[MQTT] Conexao perdida:', resposta.errorMessage);
       }
     };
+
+    // Coordenada pela metade, enquanto o par nao fecha. Vive por conexao: ao
+    // reconectar, comeca zerada de novo — melhor que arriscar juntar uma
+    // latitude velha com uma longitude nova.
+    const parcialGps = { latitude: null, longitude: null };
 
     cliente.onMessageArrived = (mensagem) => {
       const topico = mensagem.destinationName;
@@ -173,6 +187,55 @@ export function inscreverSensor(
           return;
         }
 
+        // ── GPS EM DOIS TOPICOS ──
+        // O firmware manda sensores/gps/latitude e sensores/gps/longitude
+        // separados, um numero em cada mensagem. Latitude sem longitude nao e
+        // lugar nenhum, entao guardamos a primeira que chegar e so emitimos a
+        // posicao quando o par estiver completo.
+        const ehLat = combina(sufixos.gpsLatitude || []);
+        const ehLon = combina(sufixos.gpsLongitude || []);
+
+        if (ehLat || ehLon) {
+          const valor = parseFloat(texto);
+          if (isNaN(valor)) {
+            console.error(`[MQTT] Coordenada invalida em ${topico}:`, texto);
+            return;
+          }
+
+          if (ehLat) parcialGps.latitude = valor;
+          else       parcialGps.longitude = valor;
+
+          const { latitude, longitude } = parcialGps;
+          if (latitude === null || longitude === null) {
+            console.log(`[MQTT] GPS · ${topico}: ${valor} (aguardando o par)`);
+            return;
+          }
+
+          // Coordenada fora do planeta e leitura suja do modulo, comum nos
+          // primeiros segundos. 0,0 joga o mapa para o meio do oceano.
+          const valida =
+            Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 &&
+            !(latitude === 0 && longitude === 0);
+
+          if (!valida) {
+            console.warn(`[MQTT] GPS descartado: ${latitude}, ${longitude}`);
+            return;
+          }
+
+          console.log(
+            `[MQTT] GPS · ${latitude.toFixed(5)}, ${longitude.toFixed(5)} ` +
+            `(caminhao ${simples.caminhao})`
+          );
+
+          onPosicao({
+            latitude,
+            longitude,
+            satelites: null,
+            caminhao: simples.caminhao,
+          });
+          return;
+        }
+
         // Chegou algo embaixo de sensores/ que este ramo nao trata. Pode ser a
         // temperatura ou o volume duplicados, que sao lidos pelo formato
         // cemtinel/caminhao/{n}/..., ou um topico novo que ninguem mencionou.
@@ -203,6 +266,45 @@ export function inscreverSensor(
         }
         console.log(`[MQTT] Caminhao ${caminhao}: ${temperatura} °C`);
         onTemperatura({ temperatura, caminhao });
+        return;
+      }
+
+      // ── POSICAO (GPS) ──
+      // Diferente dos outros, a carga e JSON: sao dois numeros que so fazem
+      // sentido juntos. Latitude sem longitude nao e lugar nenhum.
+      if (topico.endsWith('/posicao')) {
+        let dados;
+        try {
+          dados = JSON.parse(texto);
+        } catch (falha) {
+          console.error('[MQTT] Posicao nao e JSON valido:', texto);
+          return;
+        }
+
+        const latitude  = Number(dados.lat ?? dados.latitude);
+        const longitude = Number(dados.lon ?? dados.lng ?? dados.longitude);
+
+        // Coordenada fora do planeta e leitura suja do modulo. Acontece nos
+        // primeiros segundos, antes do fix firmar — e uma coordenada dessas
+        // joga o mapa para o meio do oceano.
+        const valida =
+          Number.isFinite(latitude) && Number.isFinite(longitude) &&
+          Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 &&
+          !(latitude === 0 && longitude === 0);
+
+        if (!valida) {
+          console.warn('[MQTT] Posicao descartada:', texto);
+          return;
+        }
+
+        const satelites = Number(dados.sat ?? dados.satelites) || null;
+
+        console.log(
+          `[MQTT] Caminhao ${caminhao}: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}` +
+          (satelites ? ` (${satelites} satelites)` : '')
+        );
+
+        onPosicao({ latitude, longitude, satelites, caminhao });
         return;
       }
 

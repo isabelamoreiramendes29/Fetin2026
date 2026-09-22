@@ -21,6 +21,8 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +39,7 @@ import { corDoCaminhao } from '../services/planta';
 import { inscreverSensor } from '../services/mqtt';
 import { registrarLeituraVazao } from '../services/caminhoes';
 import { salvarUmidade, verificarAdicaoDeAgua } from '../services/umidade';
+import { hostAtual, definirHost } from '../services/configBroker';
 
 // De quanto em quanto tempo a tela reconsulta a ultima leitura
 const INTERVALO_CONSULTA_MS = 5000;
@@ -187,6 +190,26 @@ export default function TemperaturaScreen({ navigation, route }) {
   // duas vezes se os dois estiverem com o app aberto.
   const [sensorConectado, setSensorConectado] = useState(false);
 
+  // ── ENDERECO DO BROKER ──
+  // `versaoBroker` existe para forcar a reconexao: o efeito de assinatura
+  // depende dele, entao trocar o IP derruba a conexao velha e abre a nova.
+  // Sem isso o endereco novo so valeria na proxima abertura do app.
+  const [editandoIp, setEditandoIp]   = useState(false);
+  const [ipDigitado, setIpDigitado]   = useState('');
+  const [erroIp, setErroIp]           = useState('');
+  const [versaoBroker, setVersaoBroker] = useState(0);
+
+  async function salvarIp() {
+    try {
+      await definirHost(ipDigitado);
+      setErroIp('');
+      setEditandoIp(false);
+      setVersaoBroker((v) => v + 1);
+    } catch (falha) {
+      setErroIp(falha.message);
+    }
+  }
+
   // Sensor de vazao ACUMULA: manda 5, depois 12, depois 27, conforme a
   // descarga avanca. Por isso a leitura atualiza a viagem, em vez de so
   // preencher a que estiver vazia — a primeira versao travava no primeiro
@@ -317,8 +340,8 @@ export default function TemperaturaScreen({ navigation, route }) {
     umidade: tratarUmidade,
   };
 
-  // So a obra e a lista de caminhoes exigem reassinar. Todo o resto passa pela
-  // referencia acima.
+  // So a obra, a lista de caminhoes e o endereco do broker exigem reassinar.
+  // Todo o resto passa pela referencia acima.
   useEffect(() => {
     if (!obraId) return;
 
@@ -332,8 +355,9 @@ export default function TemperaturaScreen({ navigation, route }) {
     return () => {
       if (desinscrever) desinscrever();
     };
-    // chaveCaminhoes no lugar da lista: array novo a cada render reassinaria sempre
-  }, [obraId, chaveCaminhoes]);
+    // chaveCaminhoes no lugar da lista: array novo a cada render reassinaria sempre.
+    // versaoBroker sobe quando o IP muda, e e o que derruba a conexao velha.
+  }, [obraId, chaveCaminhoes, versaoBroker]);
 
   // Botao de simulacao: grava uma leitura de verdade, para a tela e o Historico
   // se comportarem exatamente como se comportarao com o sensor ligado
@@ -511,7 +535,51 @@ export default function TemperaturaScreen({ navigation, route }) {
             {'  ·  '}
             {medidoEm ? formatarQuando(medidoEm) : 'sem leitura'}
           </Text>
+
+          {/* O endereco do broker muda a cada rede: bancada, escola, hotspot.
+              Num aplicativo instalado nao ha codigo para editar, entao ele
+              precisa ser trocavel aqui. */}
+          <TouchableOpacity
+            onPress={() => { setIpDigitado(hostAtual()); setEditandoIp(true); }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.linkBroker}>{hostAtual()}</Text>
+          </TouchableOpacity>
         </View>
+
+        {/* ── TROCAR O ENDERECO DO BROKER ── */}
+        <Modal visible={editandoIp} transparent animationType="fade">
+          <View style={styles.fundoModal}>
+            <View style={styles.caixaModal}>
+              <Text style={styles.tituloModal}>Endereço do broker</Text>
+              <Text style={styles.ajudaModal}>
+                Só o IP do computador onde roda o Mosquitto. Sem ws:// e sem a porta.
+              </Text>
+
+              <TextInput
+                style={styles.campoModal}
+                value={ipDigitado}
+                onChangeText={setIpDigitado}
+                placeholder="192.168.0.10"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="numbers-and-punctuation"
+              />
+
+              {!!erroIp && <Text style={styles.erroModal}>{erroIp}</Text>}
+
+              <View style={styles.botoesModal}>
+                <TouchableOpacity onPress={() => { setEditandoIp(false); setErroIp(''); }}>
+                  <Text style={styles.botaoModalTexto}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={salvarIp}>
+                  <Text style={[styles.botaoModalTexto, styles.botaoModalForte]}>Salvar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* ── CARD PRINCIPAL ── */}
         {/* Contem: velocimetro + display digital + texto de status */}
@@ -747,6 +815,50 @@ const styles = StyleSheet.create({
     color: '#3B82F6', fontSize: 10.5,
     fontWeight: 'bold', letterSpacing: 1.2,
   },
+
+  // ── ENDERECO DO BROKER, NA LINHA DE STATUS ──
+  linkBroker: {
+    color: 'rgba(255,255,255,0.55)', fontSize: 11,
+    textDecorationLine: 'underline', marginLeft: 8,
+  },
+
+  fundoModal: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center', paddingHorizontal: 26,
+  },
+
+  caixaModal: {
+    backgroundColor: '#0B2065',
+    borderWidth: 1, borderColor: 'rgba(59,130,246,0.4)',
+    borderRadius: 16, padding: 20,
+  },
+
+  tituloModal: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+
+  ajudaModal: {
+    color: 'rgba(255,255,255,0.55)', fontSize: 12.5,
+    lineHeight: 17, marginTop: 6,
+  },
+
+  campoModal: {
+    marginTop: 14, paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 10, color: '#fff', fontSize: 16,
+  },
+
+  erroModal: { color: '#FCA5A5', fontSize: 12.5, marginTop: 8 },
+
+  botoesModal: {
+    flexDirection: 'row', justifyContent: 'flex-end',
+    gap: 22, marginTop: 18,
+  },
+
+  botaoModalTexto: {
+    color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '600',
+  },
+
+  botaoModalForte: { color: '#3B82F6' },
 
   // ── ESTADO EM PALAVRAS ──
   // E a informacao principal do card, entao tem o maior corpo de texto e a

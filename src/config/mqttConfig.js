@@ -47,10 +47,17 @@ const mqttConfig = {
   topicoTemperatura: (caminhao) => `${RAIZ}/caminhao/${caminhao}/temperatura`,
   topicoVolume:      (caminhao) => `${RAIZ}/caminhao/${caminhao}/volume`,
 
+  // ── POSICAO (GPS) ──
+  // Carga em JSON, porque sao dois numeros: {"lat":-22.2519,"lon":-45.7036}
+  // O campo "sat" (satelites) e opcional e serve so para diagnostico.
+  // Ver hardware/gps-esp8266/ para o firmware que publica aqui.
+  topicoPosicao: (caminhao) => `${RAIZ}/caminhao/${caminhao}/posicao`,
+
   // Usados quando a obra ainda nao tem caminhao despachado: sem isso, nao
   // haveria o que assinar e testar ficaria impossivel antes do primeiro envio
   topicoTemperaturaTodos: `${RAIZ}/caminhao/+/temperatura`,
   topicoVolumeTodos:      `${RAIZ}/caminhao/+/volume`,
+  topicoPosicaoTodos:     `${RAIZ}/caminhao/+/posicao`,
 
   // Tira o identificador do caminho: de 'cemtinel/caminhao/4/temperatura' → '4'
   caminhaoDoTopico: (topico) => {
@@ -110,6 +117,12 @@ const mqttConfig = {
     sufixos: {
       umidadeValor:  ['umidade/valor', 'umidade'],
       umidadeStatus: ['umidade/status'],
+
+      // O GPS publica a coordenada em DOIS topicos separados, um numero em
+      // cada. Nenhum dos dois sozinho e um lugar — o app junta os dois antes
+      // de usar (ver services/mqtt.js).
+      gpsLatitude:  ['gps/latitude', 'gps/lat'],
+      gpsLongitude: ['gps/longitude', 'gps/lon', 'gps/lng'],
     },
   },
 

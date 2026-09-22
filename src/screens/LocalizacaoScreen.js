@@ -25,7 +25,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import MapaRota, { comprimentoRota } from '../components/MapaRota';
-import { publicarPosicao, buscarPosicoes } from '../services/rastreamento';
+import { publicarPosicao, buscarPosicoes, publicarCoordenada } from '../services/rastreamento';
+import { inscreverSensor } from '../services/mqtt';
 import { corDoCaminhao } from '../services/planta';
 import { buscarFrota, acharCaminhao } from '../services/frota';
 import { coordenadaDe, enderecoDaObra, tracarRota } from '../services/geo';
@@ -83,6 +84,63 @@ export default function LocalizacaoScreen({ navigation, route }) {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  // ── GPS AO VIVO ──
+  // O modulo publica a coordenada medida; aqui ela entra na tela na hora e vai
+  // para o banco, para o outro perfil enxergar tambem.
+  //
+  // Isto NAO desliga a simulacao. GPS nao fixa dentro de predio e leva minutos
+  // para pegar satelite na primeira vez — enquanto nao houver coordenada, o
+  // mapa continua desenhando pelo progresso. A medida entra quando existe.
+  const tratarPosicao = useCallback(({ latitude, longitude, satelites, caminhao }) => {
+    if (!caminhao) return;
+
+    setPosicoes((atuais) => {
+      const jaTem = atuais.some((p) => p.caminhao === caminhao);
+
+      // Caminhao que ainda nao esta na lista: entra so com a coordenada. Sem
+      // isso, o GPS de um caminhao nao despachado nao apareceria nunca.
+      if (!jaTem) {
+        return [...atuais, {
+          caminhao,
+          progresso: 0,
+          emMovimento: true,
+          coordenada: { latitude, longitude },
+          satelites,
+        }];
+      }
+
+      return atuais.map((p) =>
+        p.caminhao === caminhao
+          ? { ...p, coordenada: { latitude, longitude }, satelites }
+          : p
+      );
+    });
+
+    publicarCoordenada(obraId, caminhao, { latitude, longitude, satelites });
+  }, [obraId]);
+
+  // Ref pelo mesmo motivo do resto: se o manipulador entrasse nas dependencias
+  // do efeito de assinatura, cada coordenada recebida derrubaria e refaria a
+  // conexao, e as mensagens seguintes se perderiam no vaivem.
+  const manipuladorPosicao = useRef(tratarPosicao);
+  manipuladorPosicao.current = tratarPosicao;
+
+  const caminhoesDaObra = posicoes.map((p) => p.caminhao).join(',');
+
+  useEffect(() => {
+    if (!obraId) return;
+
+    const encerrar = inscreverSensor(
+      obraId,
+      caminhoesDaObra ? caminhoesDaObra.split(',') : [],
+      { onPosicao: (dados) => manipuladorPosicao.current(dados) }
+    );
+
+    // inscreverSensor devolve null quando nem chega a conectar (broker fora,
+    // por exemplo). Devolver null direto ao useEffect gera aviso do React.
+    return () => { if (typeof encerrar === 'function') encerrar(); };
+  }, [obraId, caminhoesDaObra]);
 
   // A frota traz placa, motorista e capacidade. Carregada uma vez: ela muda
   // muito menos que a posicao dos caminhoes.

@@ -15,11 +15,22 @@
 import { supabase } from './supabase';
 
 function normalizarPosicao(linha) {
+  // Coordenada so existe quando o GPS fixou. Nula e o estado comum: dentro de
+  // predio o modulo nao pega satelite nenhum, e a tela cai no progresso.
+  const temCoordenada =
+    linha.latitude !== null && linha.latitude !== undefined &&
+    linha.longitude !== null && linha.longitude !== undefined;
+
   return {
     caminhao: linha.caminhao,
     progresso: Number(linha.progresso),
     emMovimento: linha.em_movimento,
     atualizadoEm: linha.atualizado_em,
+    coordenada: temCoordenada
+      ? { latitude: Number(linha.latitude), longitude: Number(linha.longitude) }
+      : null,
+    satelites: linha.satelites ?? null,
+    medidoEm: linha.medido_em ?? null,
   };
 }
 
@@ -51,13 +62,46 @@ export async function publicarPosicao(obraId, caminhao, progresso, emMovimento) 
 }
 
 // ─────────────────────────────────────────────────────────────
+// GRAVAR A COORDENADA MEDIDA PELO GPS
+// Chamada quando chega uma posicao pelo MQTT (ver services/mqtt.js).
+//
+// Separada de publicarPosicao de proposito: aquela e a simulacao da tela da
+// construtora, esta e a medida do modulo. As duas escrevem na mesma linha
+// mas em colunas diferentes, e nao se atropelam — o upsert aqui nao mexe em
+// `progresso`, entao a rota continua andando na tela mesmo se o GPS parar.
+// ─────────────────────────────────────────────────────────────
+export async function publicarCoordenada(obraId, caminhao, { latitude, longitude, satelites }) {
+  const { error } = await supabase
+    .from('posicao_caminhao')
+    .upsert(
+      {
+        id_obra: obraId,
+        caminhao,
+        latitude,
+        longitude,
+        satelites: satelites ?? null,
+        medido_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      },
+      { onConflict: 'id_obra,caminhao' }
+    );
+
+  if (error) {
+    console.warn('[Rastreamento] Nao gravou a coordenada:', error.message);
+    return false;
+  }
+
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────
 // LER A POSICAO DE TODOS OS CAMINHOES A CAMINHO DE UMA OBRA
 // Retorna [] quando nenhum caminhao foi despachado — situacao normal.
 // ─────────────────────────────────────────────────────────────
 export async function buscarPosicoes(obraId) {
   const { data, error } = await supabase
     .from('posicao_caminhao')
-    .select('caminhao, progresso, em_movimento, atualizado_em')
+    .select('caminhao, progresso, em_movimento, atualizado_em, latitude, longitude, satelites, medido_em')
     .eq('id_obra', obraId)
     .order('caminhao', { ascending: true });
 

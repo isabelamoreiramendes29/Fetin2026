@@ -132,7 +132,10 @@ export default function MapaRota({
               // tracksViewChanges desligado, o marcador so reposicionaria ao
               // mexer no mapa. Mudar a key forca o redesenho a cada avanco.
               key={`${item.caminhao}-${Math.round(item.progresso)}`}
-              coordinate={posicaoNaRota(rota, item.progresso)}
+              // A coordenada MEDIDA pelo GPS tem prioridade. Sem ela — que e o
+              // caso enquanto o modulo nao fixa, ou dentro de predio — cai na
+              // posicao calculada pelo progresso, como sempre funcionou.
+              coordinate={item.coordenada || posicaoNaRota(rota, item.progresso)}
               title={`Caminhão ${item.caminhao}`}
               description={`${Math.round(item.progresso)}% do trajeto`}
               anchor={{ x: 0.5, y: 0.5 }}

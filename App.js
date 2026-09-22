@@ -7,8 +7,16 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { ObrasProvider } from './src/context/ObrasContext';
 import { CaminhoesProvider } from './src/context/CaminhoesContext';
 import { pedirPermissaoNotificacao } from './src/services/alertas';
+import { carregarHost } from './src/services/configBroker';
 
 export default function App() {
+  // Le o endereco do broker gravado no aparelho antes de qualquer tela tentar
+  // conectar. Sem isso, a primeira conexao usaria o padrao de fabrica e so
+  // acertaria o endereco na recarga seguinte.
+  useEffect(() => {
+    carregarHost();
+  }, []);
+
   // Pede a permissao uma vez, na abertura. Negar nao quebra nada: os alertas
   // continuam sendo gravados e aparecem na tela de Alertas — o que se perde
   // e o aviso chegando sem o usuario pedir.
