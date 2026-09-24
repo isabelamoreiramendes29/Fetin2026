@@ -36,6 +36,11 @@ import deposito from '../config/deposito';
 // De quanto em quanto tempo o mestre reconsulta a posicao do caminhao
 const INTERVALO_CONSULTA_MS = 3000;
 
+// Quanto tempo sem coordenada nova para considerar o GPS parado.
+// O modulo publica a cada poucos segundos; meio minuto de silencio e sinal
+// de que ele parou mesmo, nao de que a mensagem atrasou.
+const GPS_SILENCIO_MS = 30000;
+
 // Passo da simulacao no modo da construtora
 const PASSO_MS = 500;
 const PASSO_PCT = 2;
@@ -60,6 +65,19 @@ export default function LocalizacaoScreen({ navigation, route }) {
   const [posicoes, setPosicoes]     = useState([]);
   const [selecionado, setSelecionado] = useState(null);
   const [simulando, setSimulando]   = useState(false);
+
+  // ── GPS ATIVO? ──
+  // Verdadeiro enquanto o modulo esta publicando coordenada. Enquanto for,
+  // a tela esconde os controles de simulacao e troca a nota do rodape: nao
+  // se oferece um botao de "iniciar" numa tela que ja mostra posicao real.
+  const [gpsAtivo, setGpsAtivo] = useState(false);
+  const silencioGpsRef = useRef(null);
+
+  // Limpa o temporizador ao sair da tela, senao ele dispara em componente
+  // desmontado e o React reclama
+  useEffect(() => () => {
+    if (silencioGpsRef.current) clearTimeout(silencioGpsRef.current);
+  }, []);
 
   // O intervalo precisa ler o progresso mais recente sem se recriar a cada
   // avanco — daí a copia em ref
@@ -94,6 +112,13 @@ export default function LocalizacaoScreen({ navigation, route }) {
   // mapa continua desenhando pelo progresso. A medida entra quando existe.
   const tratarPosicao = useCallback(({ latitude, longitude, satelites, caminhao }) => {
     if (!caminhao) return;
+
+    // Marca o GPS como ativo e reagenda o silencio. O modulo publica a cada
+    // poucos segundos, entao meio minuto sem nada significa que ele parou de
+    // verdade — perdeu sinal, caiu a rede, desligou.
+    setGpsAtivo(true);
+    if (silencioGpsRef.current) clearTimeout(silencioGpsRef.current);
+    silencioGpsRef.current = setTimeout(() => setGpsAtivo(false), GPS_SILENCIO_MS);
 
     setPosicoes((atuais) => {
       const jaTem = atuais.some((p) => p.caminhao === caminhao);
@@ -411,7 +436,17 @@ export default function LocalizacaoScreen({ navigation, route }) {
         {/* So a construtora: a betoneira e dela. O mestre acompanha e nao
             controla, entao para ele estes botoes nem sao desenhados. */}
         {/* Os controles agem sobre o caminhao selecionado, nao sobre a obra */}
-        {!somenteLeitura && emFoco && (
+        {/*
+            E somem quando o GPS esta publicando de verdade. O motivo e de
+            apresentacao: botao de "iniciar" numa tela que ja recebe coordenada
+            real faz o observador duvidar do que esta vendo, e a duvida
+            contamina o resto — inclusive os sensores que funcionam.
+
+            Com GPS ativo a tela nao oferece nada para empurrar; sem GPS, os
+            controles voltam sozinhos. Nenhuma das duas situacoes exige que
+            alguem lembre de configurar coisa nenhuma.
+        */}
+        {!somenteLeitura && emFoco && !gpsAtivo && (
         <View style={styles.botoesControle}>
 
           {/* ▶️ Iniciar */}
@@ -459,10 +494,15 @@ export default function LocalizacaoScreen({ navigation, route }) {
         {/* O traco entre origem e destino e uma reta: rota por ruas exigiria a
             API de direcoes do Google, que e paga. Melhor a tela dizer isso do
             que alguem perguntar na banca. */}
+        {/* A nota diz de onde vem a posicao mostrada. Com GPS ativo ela muda
+            sozinha — nao adianta o mapa estar certo se o rodape continua
+            dizendo "simulada". */}
         <Text style={styles.notaDemonstracao}>
-          {somenteLeitura
-            ? '* Posição enviada pela construtora · trajeto em linha reta'
-            : '* Posição simulada · trajeto em linha reta'}
+          {gpsAtivo
+            ? '* Posição medida pelo GPS do caminhão'
+            : somenteLeitura
+              ? '* Posição enviada pela construtora · trajeto em linha reta'
+              : '* Posição simulada · trajeto em linha reta'}
         </Text>
 
       </ScrollView>
