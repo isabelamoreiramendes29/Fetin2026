@@ -14,6 +14,42 @@ import * as Location from 'expo-location';
 const cache = new Map();
 
 // ─────────────────────────────────────────────────────────────
+// PERMISSAO DE LOCALIZACAO
+//
+// No Android, Location.geocodeAsync EXIGE permissao de localizacao — mesmo
+// que o app nao queira saber onde o usuario esta, so traduzir um endereco em
+// coordenada. Sem a permissao a chamada falha, a rota fica nula, e a tela de
+// Localizacao nao desenha mapa nenhum: some inteira, sem explicacao.
+//
+// Foi exatamente isso que aconteceu na vespera da Fetin. O pedido fica aqui,
+// no caminho de quem precisa dele, e nao no arranque do app: assim ele so
+// aparece quando o usuario abre a tela do mapa, que e quando faz sentido.
+//
+// Pedimos uma vez por sessao. Negar nao quebra nada alem do mapa.
+// ─────────────────────────────────────────────────────────────
+let permissaoPedida = false;
+let permissaoConcedida = false;
+
+async function garantirPermissao() {
+  if (permissaoPedida) return permissaoConcedida;
+  permissaoPedida = true;
+
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    permissaoConcedida = status === 'granted';
+
+    if (!permissaoConcedida) {
+      console.warn('[Geo] Permissao de localizacao negada — o mapa nao vai desenhar.');
+    }
+  } catch (falha) {
+    console.warn('[Geo] Falha ao pedir permissao:', falha.message);
+    permissaoConcedida = false;
+  }
+
+  return permissaoConcedida;
+}
+
+// ─────────────────────────────────────────────────────────────
 // ENDERECO → COORDENADA
 // Retorna { latitude, longitude } ou null quando nao encontra.
 //
@@ -25,6 +61,9 @@ export async function coordenadaDe(endereco) {
   if (!texto) return null;
 
   if (cache.has(texto)) return cache.get(texto);
+
+  // Sem permissao nem adianta tentar: a chamada falha e o erro nao diz o motivo
+  if (!(await garantirPermissao())) return null;
 
   try {
     const resultados = await Location.geocodeAsync(texto);
