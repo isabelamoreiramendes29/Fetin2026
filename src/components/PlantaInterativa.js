@@ -24,6 +24,35 @@ function centroAproximado(pontos) {
   return { x: soma.x / pontos.length, y: soma.y / pontos.length };
 }
 
+// ─────────────────────────────────────────────────────────────
+// O PONTO ESTA DENTRO DO POLIGONO?
+//
+// Lanca um raio horizontal a partir do ponto e conta quantas arestas ele
+// cruza: impar esta dentro, par esta fora. Funciona para qualquer poligono,
+// inclusive concavo, e nao precisa que os vertices estejam em ordem especial.
+//
+// Trabalha direto nas coordenadas normalizadas (0..1), entao independe do
+// tamanho em que a planta esta sendo exibida.
+// ─────────────────────────────────────────────────────────────
+function dentroDoPoligono(ponto, vertices) {
+  if (!vertices || vertices.length < 3) return false;
+
+  let dentro = false;
+
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const { x: xi, y: yi } = vertices[i];
+    const { x: xj, y: yj } = vertices[j];
+
+    const cruza =
+      yi > ponto.y !== yj > ponto.y &&
+      ponto.x < ((xj - xi) * (ponto.y - yi)) / (yj - yi) + xi;
+
+    if (cruza) dentro = !dentro;
+  }
+
+  return dentro;
+}
+
 export default function PlantaInterativa({
   urlImagem,
   largura,
@@ -57,17 +86,44 @@ export default function PlantaInterativa({
       })
       .join(' ');
 
-  // Toque na planta em modo de marcacao — devolve a posicao normalizada.
+  // Onde o dedo encostou, em coordenada normalizada.
   // O clamp protege de toques na borda que escapariam de 0..1.
-  function handleToque(evento) {
+  function pontoDoToque(evento) {
     const { locationX, locationY } = evento.nativeEvent;
 
-    const ponto = {
+    return {
       x: Math.min(Math.max(locationX / larguraExibida, 0), 1),
       y: Math.min(Math.max(locationY / alturaExibida, 0), 1),
     };
+  }
 
-    onTocarPlanta?.(ponto);
+  // Modo de marcacao: cada toque vira um vertice.
+  function handleToque(evento) {
+    onTocarPlanta?.(pontoDoToque(evento));
+  }
+
+  // Modo de consulta: descobre em qual regiao o dedo caiu.
+  //
+  // Antes quem respondia ao toque era o proprio <Polygon> do react-native-svg,
+  // pelo onPress dele. No Android com a nova arquitetura esse toque
+  // simplesmente nao chega — a regiao ficava desenhada mas surda, e como o
+  // detalhe da area so abre por aqui, era impossivel lancar o resultado do
+  // laboratorio pelo aplicativo.
+  //
+  // Agora quem ouve e um Pressable comum por cima da planta, e a decisao de
+  // qual regiao foi tocada e feita em JavaScript. Nao depende do suporte a
+  // toque do SVG.
+  function handleToqueConsulta(evento) {
+    const ponto = pontoDoToque(evento);
+
+    // De tras para frente: as ultimas regioes sao desenhadas por cima, entao
+    // quando duas se sobrepoem ganha a que esta visivelmente na frente.
+    for (let i = regioes.length - 1; i >= 0; i--) {
+      if (dentroDoPoligono(ponto, regioes[i].pontos)) {
+        onTocarRegiao?.(regioes[i]);
+        return;
+      }
+    }
   }
 
   return (
@@ -83,9 +139,9 @@ export default function PlantaInterativa({
         width={larguraExibida}
         height={alturaExibida}
         style={StyleSheet.absoluteFill}
-        // Em modo de marcacao a camada de toque fica por cima, entao o SVG
-        // nao pode interceptar nada
-        pointerEvents={marcando ? 'none' : 'box-none'}
+        // O SVG e so desenho: nenhum toque passa por ele em modo nenhum.
+        // Quem ouve e o Pressable logo abaixo, no fim deste componente.
+        pointerEvents="none"
       >
 
         {/* ── REGIOES JA SALVAS ── */}
@@ -101,7 +157,8 @@ export default function PlantaInterativa({
                 fillOpacity={0.35}
                 stroke={cor}
                 strokeWidth={2.5}
-                onPress={() => onTocarRegiao?.(regiao)}
+                // Sem onPress: quem responde ao toque e a camada de baixo,
+                // em JavaScript (ver handleToqueConsulta).
               />
               <SvgText
                 x={centro.x}
@@ -164,11 +221,14 @@ export default function PlantaInterativa({
       </Svg>
 
       {/* ── CAMADA DE TOQUE ── */}
-      {/* So existe em modo de marcacao. Fica por cima de tudo para que o
-          toque vire vertice, e nao selecao de regiao. */}
-      {marcando && (
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleToque} />
-      )}
+      {/* Sempre presente, por cima de tudo. O que muda com o modo e o que ela
+          faz com o toque: virar vertice, ou abrir a regiao tocada. Um
+          Pressable comum e confiavel nas duas plataformas, o que o toque em
+          forma de SVG nao e. */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={marcando ? handleToque : handleToqueConsulta}
+      />
 
     </View>
   );

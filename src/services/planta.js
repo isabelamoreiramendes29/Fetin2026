@@ -245,11 +245,43 @@ export async function lancarResultado(idRegiao, resultadoMpa) {
 
   if (error) {
     console.error('[Planta] Erro ao lancar resultado:', error.message);
-    throw new Error('Não foi possível salvar o resultado.');
+
+    // O motivo importa, e no celular nao ha console para consultar: a unica
+    // via ate o usuario e o texto do alerta. Um "nao foi possivel" generico
+    // manda a pessoa adivinhar entre rede, banco e marcacao nao salva.
+    throw new Error(explicarFalhaDeResultado(error));
   }
 
   console.log(`[Planta] Regiao ${idRegiao} rompida com ${resultadoMpa} MPa.`);
   return normalizarRegiao(data);
+}
+
+// Traduz o erro do Supabase para uma frase que diga o que fazer a seguir.
+function explicarFalhaDeResultado(error) {
+  const texto = String(error.message || '').toLowerCase();
+
+  // Sem internet o fetch morre antes de chegar ao banco. E o caso mais comum
+  // em obra e em feira — e o unico em que esperar resolve.
+  if (texto.includes('network') || texto.includes('fetch') || texto.includes('timeout')) {
+    return 'Sem conexão com a internet. O lançamento do resultado precisa de rede — '
+         + 'os sensores não, mas este sim.';
+  }
+
+  // .single() reclama assim quando o update nao encontrou a linha: area que
+  // ainda nao foi gravada, ou que outra pessoa removeu enquanto o modal estava
+  // aberto.
+  if (texto.includes('no rows') || texto.includes('0 rows') || texto.includes('multiple')) {
+    return 'Esta área não foi encontrada no banco. Feche a planta, abra de novo '
+         + 'e marque a área outra vez antes de lançar o resultado.';
+  }
+
+  // Coluna ou tabela ausente: o schema_planta.sql nao foi rodado neste projeto.
+  if (texto.includes('column') || texto.includes('relation') || texto.includes('does not exist')) {
+    return 'O banco desta obra está sem as colunas do Mapa de Concretagem. '
+         + 'Rode supabase/schema_planta.sql no SQL Editor do Supabase.';
+  }
+
+  return `Não foi possível salvar o resultado. O banco respondeu: ${error.message}`;
 }
 
 // ─────────────────────────────────────────────────────────────
