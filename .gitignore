@@ -43,3 +43,7 @@ package-lock.json
 
 # Claude Code (ferramenta de desenvolvimento)
 .claude/
+
+# Ferramenta de revisao de design: so o config.json e compartilhado
+.impeccable/config.local.json
+.impeccable/hook.cache.json

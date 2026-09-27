@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "docs/slide-fetin.html"
+        ],
+        "createdAt": "2026-09-24T18:47:55.203Z",
+        "reason": "Claude: peca impressa/projetada, nao UI web. O filete de 3px marca as duas estatisticas ao modo de um fio editorial, e segue a linguagem das outras folhas em docs/ (esquematico, bancada)."
+      },
+      {
+        "rule": "tight-leading",
+        "value": "*",
+        "files": [
+          "docs/slide-fetin.html"
+        ],
+        "createdAt": "2026-09-24T18:47:57.623Z",
+        "reason": "Claude: os valores apontados sao de tipo de display (titulo de 68px, frases de 24px e 23px), onde entrelinha abaixo de 1.3 e o correto. O texto corrido do slide esta entre 1.34 e 1.42."
+      }
+    ]
+  }
+}

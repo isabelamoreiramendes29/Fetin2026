@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<title>Slide Cemtinel — Fetin 2026</title>
+
+<!-- ====================================================================
+     SLIDE ÚNICO — CEMTINEL NA FETIN 2026
+
+     Formato 20 x 11,25 pol (16:9), o mesmo tamanho do arquivo original
+     em PowerPoint. Para gerar o PDF: Ctrl+P, destino "Salvar como PDF",
+     margens "Nenhuma", marcar "Gráficos de plano de fundo".
+
+     As três áreas que a apresentadora aponta durante a fala estão na
+     ordem do roteiro: o problema (0:00), como funciona (1:16) e o mapa
+     de concretagem (3:20). O mapa ocupa a faixa inteira de baixo porque
+     é o diferencial — é o que nenhum concorrente tem.
+
+     O painel "Como funciona" traz o esquemático de docs/esquematico.html,
+     recortado pelo viewBox nos passos 1 a 5. A folha A4 inteira continua
+     existindo para imprimir e deixar na mesa.
+
+     Falta uma imagem: ponha o arquivo em docs/slide-assets/ com este nome.
+     Enquanto não existir, aparece uma moldura tracejada dizendo o que
+     falta — nada quebra.
+
+        app-monitoramento.png   print da tela de Monitoramento
+     ==================================================================== -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* 13,333 x 7,5 pol — o tamanho padrão de slide 16:9 do PowerPoint e do
+     Google Slides, que é o que um projetor espera. O arquivo original da
+     equipe tinha 20 x 11,25 pol: mesma proporção, folha maior à toa.
+     O desenho continua sendo feito em 1920 x 1080 px; o zoom de impressão
+     reduz para 1280 x 720 px, que é exatamente 13,333 x 7,5 pol a 96 dpi. */
+  @page { size: 13.333in 7.5in; margin: 0; }
+
+  :root {
+    --ground:#EBEEEC;
+    --surface:#F7F9F8;
+    --ink:#14181A;
+    --muted:#5C6469;
+    --faint:#5E666B;   /* escuro o bastante para sobreviver a um projetor */
+    --rule:#CDD3D1;
+    --accent:#9E3327;      /* óxido de vergalhão — a cor da área reprovada */
+    --signal:#1F6FB2;      /* azul de planta — o que é técnico */
+    --ok:#2F6B45;
+  }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+
+  body {
+    background:#8A8F92;
+    font-family:Archivo,"Segoe UI",Arial,sans-serif;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* A folha tem o tamanho exato do slide. Nada aqui é responsivo de
+     propósito: o destino é papel e projetor, não tela de celular. */
+  .folha {
+    width:1920px; height:1080px;
+    background:var(--ground);
+    margin:20px auto;
+    padding:38px 44px 30px;
+    display:flex; flex-direction:column; gap:20px;
+    position:relative; overflow:hidden;
+  }
+
+  @media print {
+    body { background:#fff; }
+    .folha { margin:0; box-shadow:none; zoom:0.666667; }
+    .aviso { display:none; }
+  }
+
+  .aviso {
+    max-width:1920px; margin:20px auto 0; padding:10px 14px;
+    background:#fff; border:1px solid #bbb; color:#444;
+    font-size:13px; line-height:1.5;
+  }
+  .aviso b { color:#000; }
+
+  /* ===================== CABEÇALHO ===================== */
+  header {
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:4px solid var(--ink); padding-bottom:13px; flex:none;
+  }
+  .marca h1 {
+    font-size:68px; font-weight:800; letter-spacing:-.035em; line-height:.9;
+  }
+  .marca p {
+    font-size:22px; color:var(--muted); margin-top:8px; font-weight:500;
+  }
+  .marca p b { color:var(--accent); font-weight:700; }
+
+  .creditos { text-align:right; font-size:15px; color:var(--muted); line-height:1.55; }
+  .creditos .evento {
+    font-family:"IBM Plex Mono",Consolas,monospace; font-size:13px;
+    letter-spacing:.13em; text-transform:uppercase;
+    color:var(--accent); margin-bottom:7px;
+  }
+  .creditos b { color:var(--ink); font-weight:600; }
+
+  /* ===================== GRADE =====================
+     A tela do aplicativo é alta como todo celular, e só se lê inteira se
+     tiver uma coluna alta para ela. Por isso ela ocupa a lateral direita de
+     ponta a ponta, e o resto do conteúdo se arruma à esquerda:
+
+        ┌──────────────────────────────┬────────┐
+        │ O PROBLEMA (faixa deitada)   │        │
+        ├──────────────────────────────┤  TELA  │
+        │ COMO FUNCIONA (esquemático)  │   DO   │
+        ├──────────────────────────────┤  APP   │
+        │ O DIFERENCIAL (as plantas)   │        │
+        └──────────────────────────────┴────────┘                        */
+  .corpo {
+    flex:1; min-height:0; display:grid;
+    grid-template-columns:1fr 344px; gap:20px;
+  }
+  .coluna { display:flex; flex-direction:column; gap:20px; min-height:0; }
+
+  /* O problema vira uma faixa deitada: frase, os dois números e a foto
+     lado a lado, em vez de empilhados. */
+  .faixa-problema { height:168px; flex:none; }
+  .prob-linha {
+    flex:1; min-height:0; display:grid;
+    grid-template-columns:1.15fr 0.76fr 0.76fr 1fr 0.8fr; gap:18px; align-items:center;
+  }
+  .prob-linha .frase-problema { margin:0; font-size:19px; line-height:1.28; }
+  .prob-linha .dado { border-left:3px solid var(--accent); padding:1px 0 1px 11px; }
+  .prob-linha .foto-problema { height:100%; margin:0; }
+  .prob-perdas { display:flex; flex-direction:column; gap:5px; }
+
+  /* O esquemático é um desenho de página A4: se entrar num painel estreito,
+     o texto dele vira um borrão. Por isso ele ocupa dois terços da linha —
+     é a largura mínima em que os rótulos ainda se leem no projetor. */
+  .painel-desenho { flex:1; min-height:0; }
+  .painel-desenho svg { flex:1; min-height:0; width:100%; height:100%; }
+
+  .painel {
+    background:var(--surface); border:1px solid var(--rule);
+    padding:18px 20px; display:flex; flex-direction:column;
+    position:relative; overflow:hidden; min-height:0;
+  }
+  .painel > h2 {
+    font-size:13px; font-weight:700; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--accent); padding-bottom:10px; margin-bottom:15px;
+    border-bottom:2px solid var(--ink); flex:none;
+  }
+  .painel.destaque { border:2px solid var(--ink); }
+  .painel .momento {
+    position:absolute; top:17px; right:20px;
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:12px; color:var(--faint);
+  }
+
+  /* ===================== 1 · PROBLEMA ===================== */
+  .frase-problema {
+    font-size:24px; font-weight:700; line-height:1.24;
+    letter-spacing:-.015em; margin-bottom:13px;
+  }
+  .frase-problema em { font-style:normal; color:var(--accent); }
+
+  .foto-problema {
+    width:100%; height:92px; object-fit:cover; object-position:center 62%;
+    border:1px solid var(--rule); margin-bottom:12px; flex:none;
+  }
+
+  /* Dois números verificados, com a norma que os sustenta logo abaixo.
+     Número em slide sem fonte é número que a banca derruba. */
+  .dados { display:flex; gap:13px; margin-bottom:13px; flex:none; }
+  .dado {
+    flex:1; border-left:3px solid var(--accent);
+    padding:2px 0 2px 11px;
+  }
+  .dado dt {
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:27px; font-weight:600; color:var(--accent);
+    letter-spacing:-.03em; line-height:1;
+  }
+  .dado dd { font-size:12.5px; color:var(--ink); line-height:1.34; margin-top:5px; }
+  .dado .norma {
+    display:block; margin-top:4px; font-size:11px; color:var(--faint);
+    font-family:"IBM Plex Mono",Consolas,monospace;
+  }
+
+  .perdas { display:flex; flex-direction:column; gap:7px; margin-top:auto; }
+  .perda {
+    display:grid; grid-template-columns:15px 1fr; gap:0 9px;
+    font-size:14px; color:var(--muted); line-height:1.34;
+  }
+  .perda b {
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:14px; color:var(--accent); font-weight:600;
+  }
+  .perda span { color:var(--ink); font-weight:600; }
+
+  /* ===================== 2 · COMO FUNCIONA ===================== */
+  .fluxo { display:flex; flex-direction:column; gap:0; flex:none; }
+  .passo {
+    display:grid; grid-template-columns:24px 1fr; gap:0 11px;
+    align-items:start; padding:5px 0;
+  }
+  .passo-n {
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:13px; font-weight:600; color:#fff; background:var(--ink);
+    width:24px; height:24px; display:flex; align-items:center;
+    justify-content:center; flex:none;
+  }
+  .passo-t { font-size:16px; font-weight:700; line-height:1.22; }
+  .passo-d { font-size:13px; color:var(--muted); line-height:1.34; margin-top:2px; }
+  .passo-d code {
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:12px; color:var(--signal);
+  }
+  .seta { height:7px; margin-left:11px; border-left:2px solid var(--rule); }
+
+  .medidas {
+    margin-top:auto; padding-top:11px; border-top:1px solid var(--rule);
+    display:grid; grid-template-columns:repeat(3,1fr); gap:10px; flex:none;
+  }
+  .medida { text-align:center; }
+  .medida dt {
+    font-size:11px; font-weight:700; letter-spacing:.07em;
+    text-transform:uppercase; color:var(--ink); margin-bottom:3px;
+  }
+  .medida dd { font-size:11.5px; color:var(--muted); line-height:1.32; }
+
+  /* ===================== MOLDURAS DE FOTO ===================== */
+  .moldura {
+    border:2px dashed var(--signal); background:#EAF1F7;
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; padding:12px; gap:5px;
+  }
+  .moldura b { font-size:14px; color:var(--signal); }
+  .moldura span { font-size:12px; color:var(--muted); line-height:1.4; }
+  .moldura img { width:100%; height:100%; object-fit:contain; }
+  .moldura.tem { border:1px solid var(--rule); background:var(--surface); padding:0; }
+
+  /* ===================== 3 · O QUE O APP MOSTRA ===================== */
+  .painel-app .moldura { flex:1; min-height:0; }
+  .legenda-app {
+    margin-top:12px; font-size:14.5px; color:var(--muted);
+    line-height:1.42; flex:none;
+  }
+  .legenda-app b { color:var(--ink); font-weight:600; }
+
+  /* ===================== FAIXA DO DIFERENCIAL ===================== */
+  .diferencial {
+    height:222px; flex:none; display:grid;
+    grid-template-columns:330px 1fr 1fr; gap:0;
+    border:2px solid var(--ink); background:var(--surface);
+  }
+  .dif-texto { padding:17px 19px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .dif-texto h2 {
+    font-size:13px; font-weight:700; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--accent); padding-bottom:9px; margin-bottom:13px;
+    border-bottom:2px solid var(--ink);
+  }
+  .dif-texto .pergunta {
+    font-size:23px; font-weight:700; line-height:1.2;
+    letter-spacing:-.015em; margin-bottom:11px;
+  }
+  .dif-texto .pergunta em { font-style:normal; color:var(--accent); }
+  .dif-texto p { font-size:13.5px; color:var(--muted); line-height:1.42; }
+  .dif-texto p + p { margin-top:7px; }
+  .dif-texto b { color:var(--ink); font-weight:600; }
+  .dif-texto .sozinho {
+    margin-top:auto; padding-top:10px; border-top:1px solid var(--rule);
+    font-size:13px; color:var(--ink); font-weight:600; line-height:1.38;
+  }
+
+  .planta {
+    padding:14px 16px 12px; border-left:1px solid var(--rule);
+    display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  }
+  .planta h3 {
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:11.5px; font-weight:600; color:var(--faint);
+    letter-spacing:.06em; margin-bottom:2px; flex:none;
+  }
+  .planta .quando { font-size:14px; font-weight:700; margin-bottom:7px; flex:none; }
+  .planta.depois .quando { color:var(--accent); }
+  /* flex:1 + min-height:0 dá ao SVG uma altura definida; com o viewBox ele
+     se encaixa dentro dela sem vazar por baixo, em vez de esticar. */
+  .planta svg { flex:1; min-height:0; width:100%; height:100%; }
+
+  /* ===================== A TELA DO APP ===================== */
+  .painel-tela .moldura { flex:1; min-height:0; }
+  .painel-tela .nota {
+    margin-top:12px; font-size:12.5px; color:var(--muted);
+    line-height:1.42; flex:none;
+  }
+  .painel-tela .nota b { color:var(--ink); font-weight:600; }
+
+  /* ===================== RODAPÉ ===================== */
+  footer {
+    display:flex; justify-content:space-between; align-items:flex-end;
+    gap:24px; border-top:2px solid var(--ink); padding-top:9px; flex:none;
+  }
+  .numeros { display:flex; gap:24px; }
+  .numeros div { line-height:1.12; }
+  .numeros dt {
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:19px; font-weight:600; letter-spacing:-.02em;
+  }
+  .numeros dd { font-size:11px; color:var(--muted); margin-top:3px; }
+  .fontes {
+    text-align:right; font-size:11px; color:var(--faint);
+    line-height:1.45; max-width:660px;
+  }
+  .fontes b { color:var(--muted); font-weight:600; }
+</style>
+
+<div class="aviso">
+  <b>Como gerar o PDF:</b> Ctrl+P → Destino <b>Salvar como PDF</b> → Margens <b>Nenhuma</b> →
+  marcar <b>Gráficos de plano de fundo</b>. Este aviso não sai na impressão.<br>
+  <b>Para pôr o print:</b> salve o arquivo em <b>docs/slide-assets/app-monitoramento.png</b>
+  e recarregue a página.
+</div>
+
+<div class="folha">
+
+  <!-- ============================ CABEÇALHO ============================ -->
+  <header>
+    <div class="marca">
+      <h1>CEMTINEL</h1>
+      <p>Monitorando a qualidade do cimento</p>
+    </div>
+    <div class="creditos">
+      <div class="evento">Fetin 2026 · 24 de setembro</div>
+      <b>Isabela Moreira Mendes</b><br>
+      <b>João Gabriel Marcelino Gonçalves</b><br>
+      <b>Laura Ribeiro Sêda</b>
+    </div>
+  </header>
+
+  <div class="corpo">
+   <div class="coluna">
+
+    <!-- ---------- 1 · O PROBLEMA (faixa deitada) ---------- -->
+    <section class="painel faixa-problema">
+      <h2>O problema</h2>
+      <span class="momento">0:00</span>
+
+      <div class="prob-linha">
+        <p class="frase-problema">
+          O concreto viaja <em>sem ninguém olhando</em>.<br>
+          A única conferência demora 28 dias.
+        </p>
+
+        <div class="dado">
+          <dt>5–10%</dt>
+          <dd>a menos de resistência, se lançado quente
+            <span class="norma">ACI 305R</span></dd>
+        </div>
+
+        <div class="dado">
+          <dt>5 L/m³</dt>
+          <dd>de água solta a massa — e enfraquece
+            <span class="norma">NRMCA CIP 26</span></dd>
+        </div>
+
+        <div class="prob-perdas">
+          <div class="perda"><b>→</b><p><span>A norma já exige</span> registrar essa água. Ninguém mede.</p></div>
+          <div class="perda"><b>→</b><p><span>O volume entregue</span> nem sempre é o volume pago.</p></div>
+        </div>
+
+        <img class="foto-problema" src="slide-assets/concretagem.png"
+             alt="Concretagem de uma laje em obra">
+      </div>
+    </section>
+
+    <!-- ---------- 2 · COMO FUNCIONA (o esquemático) ---------- -->
+    <section class="painel painel-desenho">
+      <h2>Como funciona</h2>
+
+      <!-- Mesmo desenho de docs/esquematico.html, recortado pelo viewBox nos
+           passos 1 a 5. A folha A4 inteira continua existindo para imprimir e
+           deixar na mesa; aqui entra só o fluxo, que é o que cabe no slide. -->
+      <svg viewBox="30 115 1540 500" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="setaEsq" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke"
+                  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+          <linearGradient id="tambEsq" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#EDEFF2"/>
+            <stop offset="1" stop-color="#A8AFB8"/>
+          </linearGradient>
+        </defs>
+
+        <!-- 1 · NO CAMINHÃO -->
+        <text x="40" y="150" font-size="17" font-weight="bold" fill="#9E3327" letter-spacing="2">1 · NO CAMINHÃO</text>
+        <rect x="60" y="360" width="400" height="26" fill="#7C848D"/>
+        <rect x="56" y="348" width="408" height="14" rx="3" fill="#98A0A9"/>
+        <circle cx="130" cy="400" r="30" fill="#33383E"/><circle cx="130" cy="400" r="12" fill="#8A9099"/>
+        <circle cx="330" cy="400" r="30" fill="#33383E"/><circle cx="330" cy="400" r="12" fill="#8A9099"/>
+        <circle cx="400" cy="400" r="30" fill="#33383E"/><circle cx="400" cy="400" r="12" fill="#8A9099"/>
+        <path d="M62 348 L62 258 L92 236 L150 230 L150 348 Z" fill="#B7BDC4" stroke="#545B63" stroke-width="2"/>
+        <path d="M94 252 L144 246 L144 276 L94 276 Z" fill="#7FA8C9" stroke="#5A7E9B" stroke-width="1.5"/>
+        <path d="M180 300 C182 262 224 240 286 238 C346 236 404 250 430 266 L430 330 C404 346 346 358 286 356 C224 354 182 338 180 300 Z"
+              fill="url(#tambEsq)" stroke="#6B7280" stroke-width="2.5"/>
+        <ellipse cx="240" cy="298" rx="10" ry="58" fill="none" stroke="#8A9099" stroke-width="1.8"/>
+        <ellipse cx="340" cy="297" rx="10" ry="57" fill="none" stroke="#8A9099" stroke-width="1.8"/>
+        <ellipse cx="430" cy="298" rx="10" ry="32" fill="#6E757E" stroke="#545B63" stroke-width="2"/>
+        <rect x="252" y="228" width="12" height="70" rx="3" fill="#E4694F"/>
+        <circle cx="258" cy="222" r="9" fill="#E4694F"/>
+        <rect x="322" y="230" width="12" height="80" rx="3" fill="#E0A32B"/>
+        <circle cx="328" cy="224" r="9" fill="#E0A32B"/>
+        <rect x="424" y="336" width="34" height="14" rx="3" fill="#14B8A6"/>
+        <circle cx="470" cy="343" r="9" fill="#14B8A6"/>
+        <circle cx="106" cy="222" r="9" fill="#8B5CF6"/>
+        <rect x="86" y="230" width="40" height="16" rx="3" fill="#8B5CF6"/>
+
+        <g font-size="19" fill="#14181A">
+          <circle cx="70" cy="470" r="9" fill="#E0A32B"/><text x="90" y="477">temperatura da massa</text>
+          <circle cx="70" cy="508" r="9" fill="#E4694F"/><text x="90" y="515">umidade — detecta água adicionada</text>
+          <circle cx="70" cy="546" r="9" fill="#14B8A6"/><text x="90" y="553">vazão — mede o volume na descarga</text>
+          <circle cx="70" cy="584" r="9" fill="#8B5CF6"/><text x="90" y="591">GPS — posição do caminhão</text>
+        </g>
+
+        <!-- 2 · PLACA -->
+        <text x="560" y="150" font-size="17" font-weight="bold" fill="#9E3327" letter-spacing="2">2 · PLACA</text>
+        <line x1="490" y1="300" x2="556" y2="300" stroke="#6B7280" stroke-width="3" marker-end="url(#setaEsq)"/>
+        <rect x="560" y="240" width="190" height="120" rx="8" fill="#3B4A5A" stroke="#26313D" stroke-width="2"/>
+        <rect x="580" y="266" width="80" height="40" rx="4" fill="#8C97A6"/>
+        <rect x="676" y="266" width="12" height="40" rx="2" fill="#D9C27A"/>
+        <rect x="698" y="266" width="12" height="40" rx="2" fill="#D9C27A"/>
+        <text x="655" y="392" font-size="21" font-weight="bold" text-anchor="middle" fill="#14181A">ESP8266</text>
+        <text x="655" y="420" font-size="17" text-anchor="middle" fill="#5C6469">lê os sensores e publica</text>
+
+        <!-- 3 · REDE -->
+        <text x="830" y="150" font-size="17" font-weight="bold" fill="#9E3327" letter-spacing="2">3 · REDE</text>
+        <line x1="760" y1="300" x2="826" y2="300" stroke="#6B7280" stroke-width="3" marker-end="url(#setaEsq)"/>
+        <rect x="830" y="240" width="190" height="120" rx="8" fill="#E8F0F6" stroke="#3E7EA8" stroke-width="2.5"/>
+        <path d="M880 320 A50 50 0 0 1 970 320" fill="none" stroke="#3E7EA8" stroke-width="5"/>
+        <path d="M898 330 A30 30 0 0 1 952 330" fill="none" stroke="#3E7EA8" stroke-width="5"/>
+        <circle cx="925" cy="336" r="7" fill="#3E7EA8"/>
+        <text x="925" y="286" font-size="24" font-weight="bold" text-anchor="middle" fill="#1F6FB2">MQTT</text>
+        <text x="925" y="392" font-size="17" text-anchor="middle" fill="#5C6469">protocolo leve, por Wi-Fi</text>
+        <text x="925" y="418" font-size="17" text-anchor="middle" fill="#5C6469">não depende de internet</text>
+
+        <!-- 4 · APLICATIVO -->
+        <text x="1100" y="150" font-size="17" font-weight="bold" fill="#9E3327" letter-spacing="2">4 · APLICATIVO</text>
+        <line x1="1030" y1="300" x2="1096" y2="300" stroke="#6B7280" stroke-width="3" marker-end="url(#setaEsq)"/>
+        <rect x="1100" y="198" width="150" height="250" rx="16" fill="#0B2065" stroke="#1F6FB2" stroke-width="2.5"/>
+        <rect x="1112" y="222" width="126" height="200" rx="6" fill="#16307F"/>
+        <circle cx="1140" cy="252" r="8" fill="#22C55E"/>
+        <text x="1158" y="259" font-size="15" fill="#CBD9F5">conectado</text>
+        <text x="1175" y="316" font-size="40" font-weight="bold" text-anchor="middle" fill="#fff">24°</text>
+        <rect x="1124" y="340" width="102" height="10" rx="5" fill="#3B82F6"/>
+        <rect x="1124" y="364" width="70" height="10" rx="5" fill="#E4694F"/>
+        <rect x="1124" y="388" width="88" height="10" rx="5" fill="#14B8A6"/>
+        <text x="1175" y="478" font-size="21" font-weight="bold" text-anchor="middle" fill="#14181A">celular</text>
+
+        <!-- 5 · BANCO -->
+        <text x="1340" y="150" font-size="17" font-weight="bold" fill="#9E3327" letter-spacing="2">5 · BANCO</text>
+        <line x1="1256" y1="286" x2="1336" y2="286" stroke="#2F6B45" stroke-width="3" marker-end="url(#setaEsq)"/>
+        <line x1="1336" y1="320" x2="1256" y2="320" stroke="#2F6B45" stroke-width="3" marker-end="url(#setaEsq)"/>
+        <ellipse cx="1440" cy="240" rx="98" ry="26" fill="#DCEFE3" stroke="#2F6B45" stroke-width="2.5"/>
+        <path d="M1342 240 L1342 350 A98 26 0 0 0 1538 350 L1538 240" fill="#DCEFE3" stroke="#2F6B45" stroke-width="2.5"/>
+        <ellipse cx="1440" cy="296" rx="98" ry="26" fill="none" stroke="#2F6B45" stroke-width="1.5" stroke-dasharray="6 5"/>
+        <text x="1440" y="404" font-size="21" font-weight="bold" text-anchor="middle" fill="#14181A">histórico guardado</text>
+        <text x="1440" y="432" font-size="17" text-anchor="middle" fill="#5C6469">leituras, obras, resultados</text>
+        <text x="1440" y="458" font-size="17" text-anchor="middle" fill="#5C6469">cada obra vê só o que é dela</text>
+      </svg>
+    </section>
+
+  <!-- ============================ O DIFERENCIAL ============================ -->
+  <div class="diferencial">
+
+    <div class="dif-texto">
+      <h2>O diferencial · Mapa de Concretagem</h2>
+      <p class="pergunta">Qual laje recebeu o concreto que <em>falhou</em>?</p>
+      <p class="sozinho">Rastreador de caminhão existe. Laboratório existe.
+        O que não existe é o elo entre os dois.</p>
+    </div>
+
+    <!-- ---------- PLANTA: NA ENTREGA ---------- -->
+    <div class="planta">
+      <h3>NA ENTREGA</h3>
+      <div class="quando">Cada área, um caminhão</div>
+      <svg viewBox="-46 -42 1692 1086" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="none">
+          <rect x="0"    y="0"   width="550" height="500" fill="#1F6FB2" fill-opacity=".30"/>
+          <rect x="550"  y="0"   width="550" height="500" fill="#1F6FB2" fill-opacity=".30"/>
+          <rect x="1100" y="0"   width="500" height="500" fill="#2F6B45" fill-opacity=".30"/>
+          <rect x="0"    y="500" width="550" height="500" fill="#C98A1E" fill-opacity=".32"/>
+          <rect x="550"  y="500" width="550" height="500" fill="#C98A1E" fill-opacity=".32"/>
+          <rect x="1100" y="500" width="500" height="500" fill="#2F6B45" fill-opacity=".30"/>
+        </g>
+        <g stroke="#14181A" stroke-width="7" fill="none">
+          <line x1="0" y1="0"    x2="1600" y2="0"/>
+          <line x1="0" y1="500"  x2="1600" y2="500"/>
+          <line x1="0" y1="1000" x2="1600" y2="1000"/>
+          <line x1="0"    y1="0" x2="0"    y2="1000"/>
+          <line x1="550"  y1="0" x2="550"  y2="1000"/>
+          <line x1="1100" y1="0" x2="1100" y2="1000"/>
+          <line x1="1600" y1="0" x2="1600" y2="1000"/>
+        </g>
+        <g fill="#14181A">
+          <rect x="-22" y="-22"   width="58" height="58"/>
+          <rect x="521" y="-22"   width="58" height="58"/>
+          <rect x="1071" y="-22"  width="58" height="58"/>
+          <rect x="1564" y="-22"  width="58" height="58"/>
+          <rect x="-22" y="471"   width="58" height="58"/>
+          <rect x="521" y="471"   width="58" height="58"/>
+          <rect x="1071" y="471"  width="58" height="58"/>
+          <rect x="1564" y="471"  width="58" height="58"/>
+          <rect x="-22" y="971"   width="58" height="58"/>
+          <rect x="521" y="971"   width="58" height="58"/>
+          <rect x="1071" y="971"  width="58" height="58"/>
+          <rect x="1564" y="971"  width="58" height="58"/>
+        </g>
+        <g font-family="Archivo, Arial, sans-serif" text-anchor="middle" fill="#14181A">
+          <g font-size="92" font-weight="700">
+            <text x="275"  y="225">L1</text><text x="825"  y="225">L2</text><text x="1350" y="225">L3</text>
+            <text x="275"  y="725">L4</text><text x="825"  y="725">L5</text><text x="1350" y="725">L6</text>
+          </g>
+          <g font-size="60" font-weight="600" fill="#41484C">
+            <text x="275"  y="300">CAM 4</text><text x="825"  y="300">CAM 4</text><text x="1350" y="300">CAM 7</text>
+            <text x="275"  y="800">CAM 9</text><text x="825"  y="800">CAM 9</text><text x="1350" y="800">CAM 7</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <!-- ---------- PLANTA: 28 DIAS DEPOIS ---------- -->
+    <div class="planta depois">
+      <h3>28 DIAS DEPOIS</h3>
+      <div class="quando">O laudo cai no lugar certo</div>
+      <svg viewBox="-46 -42 1692 1086" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="none">
+          <rect x="0"    y="0"   width="550" height="500" fill="#2F6B45" fill-opacity=".20"/>
+          <rect x="550"  y="0"   width="550" height="500" fill="#9E3327" fill-opacity=".80"/>
+          <rect x="1100" y="0"   width="500" height="500" fill="#2F6B45" fill-opacity=".20"/>
+          <rect x="0"    y="500" width="550" height="500" fill="#2F6B45" fill-opacity=".20"/>
+          <rect x="550"  y="500" width="550" height="500" fill="#2F6B45" fill-opacity=".20"/>
+          <rect x="1100" y="500" width="500" height="500" fill="#2F6B45" fill-opacity=".20"/>
+        </g>
+        <g stroke="#14181A" stroke-width="7" fill="none">
+          <line x1="0" y1="0"    x2="1600" y2="0"/>
+          <line x1="0" y1="500"  x2="1600" y2="500"/>
+          <line x1="0" y1="1000" x2="1600" y2="1000"/>
+          <line x1="0"    y1="0" x2="0"    y2="1000"/>
+          <line x1="550"  y1="0" x2="550"  y2="1000"/>
+          <line x1="1100" y1="0" x2="1100" y2="1000"/>
+          <line x1="1600" y1="0" x2="1600" y2="1000"/>
+        </g>
+        <rect x="550" y="0" width="550" height="500"
+              fill="none" stroke="#9E3327" stroke-width="16"/>
+        <g fill="#14181A">
+          <rect x="-22" y="-22"   width="58" height="58"/>
+          <rect x="521" y="-22"   width="58" height="58"/>
+          <rect x="1071" y="-22"  width="58" height="58"/>
+          <rect x="1564" y="-22"  width="58" height="58"/>
+          <rect x="-22" y="471"   width="58" height="58"/>
+          <rect x="521" y="471"   width="58" height="58"/>
+          <rect x="1071" y="471"  width="58" height="58"/>
+          <rect x="1564" y="471"  width="58" height="58"/>
+          <rect x="-22" y="971"   width="58" height="58"/>
+          <rect x="521" y="971"   width="58" height="58"/>
+          <rect x="1071" y="971"  width="58" height="58"/>
+          <rect x="1564" y="971"  width="58" height="58"/>
+        </g>
+        <g font-family="Archivo, Arial, sans-serif" text-anchor="middle">
+          <g font-size="92" font-weight="700" fill="#14181A">
+            <text x="275"  y="225">L1</text><text x="1350" y="225">L3</text>
+            <text x="275"  y="725">L4</text><text x="825"  y="725">L5</text><text x="1350" y="725">L6</text>
+          </g>
+          <text x="825" y="205" font-size="96" font-weight="700" fill="#FFFFFF">L2</text>
+          <text x="825" y="298" font-size="84" font-weight="700" fill="#FFFFFF"
+                font-family="'IBM Plex Mono', Consolas, monospace">18,2 MPa</text>
+          <text x="825" y="368" font-size="58" font-weight="500" fill="#F3D9D4">projeto: 25 MPa</text>
+        </g>
+      </svg>
+    </div>
+
+  </div>
+
+   </div>
+
+    <!-- ---------- A TELA DO APLICATIVO, INTEIRA ---------- -->
+    <section class="painel painel-tela">
+      <h2>Não é conceito</h2>
+      <span class="momento">1:16</span>
+
+      <div class="moldura" id="molduraApp">
+        <b>tela de Monitoramento</b>
+        <span>Salve como<br><b>slide-assets/app-monitoramento.png</b></span>
+      </div>
+
+      <p class="nota"><b>Hardware, aplicativo e banco</b>, construídos do zero.
+        O aviso chega com o caminhão ainda na estrada.</p>
+    </section>
+
+  </div>
+
+  <!-- ============================ RODAPÉ ============================ -->
+  <footer>
+    <dl class="numeros">
+      <div><dt>28 dias</dt><dd>até o laudo do laboratório</dd></div>
+      <div><dt>2h30</dt><dd>da mistura à descarga</dd></div>
+      <div><dt>25 MPa</dt><dd>fck comum em prédio</dd></div>
+      <div><dt>15–30 °C</dt><dd>faixa ideal no app</dd></div>
+    </dl>
+    <div class="fontes">
+      <b>Fontes:</b> ACI 305R · NRMCA CIP 26 · ASTM C94 ·
+      ABNT NBR 7212 · NBR 12655 · NBR 5739
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  // Se a foto existir em slide-assets/, entra no lugar da moldura tracejada.
+  // Se não existir, a moldura fica como está — dizendo o que falta.
+  [['molduraApp', 'app-monitoramento.png', 'Tela de Monitoramento do aplicativo']]
+  .forEach(function (item) {
+    var caixa = document.getElementById(item[0]);
+    if (!caixa) return;
+
+    var img = new Image();
+    img.onload = function () {
+      caixa.innerHTML = '';
+      img.alt = item[2];
+      caixa.appendChild(img);
+      caixa.classList.add('tem');
+    };
+    img.src = 'slide-assets/' + item[1];
+  });
+</script>
+</html>
