@@ -161,7 +161,6 @@ docs/            material da apresentação
 | `slide-fetin.*` | o slide da apresentação (HTML gera PDF e PNG) |
 | `demonstracao-cemtinel.gif` | animação do caminhão |
 | `cemtinel-demonstracao*.mp4` | vídeo da bancada ao lado da animação |
-| `brief-slides-fetin.md` | **desatualizado** — descreve um pitch de agosto que não existe mais |
 
 ---
 
