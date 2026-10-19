@@ -125,6 +125,18 @@ APK instalado não tem código para editar.
 
 ### 5 · O hardware
 
+Componentes usados no protótipo:
+
+| Medida | Componente |
+|---|---|
+| Microcontrolador | **ESP8266** (NodeMCU) |
+| Temperatura | **DS18B20** à prova d'água, cabo de 1 m |
+| Umidade da massa | **YL-69** — sonda resistiva de solo + comparador LM393 |
+| Vazão | **YF-S201** — efeito Hall, 1 a 30 L/min |
+| Posição | **Ublox GY-NEO6MV2** (NEO-6M v2) |
+
+Arquivos:
+
 ```
 hardware/gps-esp8266/         firmware do módulo GPS (SoftwareSerial)
 hardware/gps-esp8266-uart/    mesma coisa pela UART de hardware
@@ -132,6 +144,15 @@ hardware/cemtinel-pecas.scad  maquete do caminhão para impressão 3D
 ```
 
 O `.scad` abre no OpenSCAD. A peça a gerar é escolhida pela variável `parte`.
+
+Duas observações que economizam tempo:
+
+- O **YF-S201 publica em litros**, não em m³. A conversão fica no `fatorVolume`
+  de `src/config/mqttConfig.js`, hoje em `0.001`. Sem ele o aplicativo leu
+  13343 litros como 13343 m³.
+- O **YL-69 é resistivo**: mais água entre as hastes significa leitura menor.
+  É por isso que o alerta de adição de água procura uma **queda**, e não uma
+  subida, em `src/services/umidade.js`.
 
 ---
 

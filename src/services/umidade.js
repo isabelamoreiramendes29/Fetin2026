@@ -96,10 +96,15 @@ export async function buscarUmidade(obraId, caminhao, desde = null) {
 // quando ainda nao ha base suficiente ou quando a variacao esta dentro do
 // normal — a ausencia de alerta e o caso comum.
 //
-// Nota sobre o sinal: na maioria dos sensores capacitivos, MAIS agua significa
-// MENOR leitura bruta. Por isso a suspeita e a queda, nao a subida. Se o
-// sensor de voces se comportar ao contrario, inverta a comparacao aqui —
-// descubram isso na bancada, molhando o sensor e vendo o numero.
+// Nota sobre o sinal: o sensor usado e o YL-69, RESISTIVO — duas hastes com
+// trilha exposta, ligadas a um comparador LM393. Mais agua entre as hastes
+// significa menor resistencia e MENOR leitura bruta. Por isso a suspeita e a
+// queda, e nao a subida.
+//
+// O capacitivo se comporta na mesma direcao, entao trocar de tipo nao quebra
+// esta logica. Mas se um dia puserem um sensor que faca o contrario, inverta
+// a comparacao aqui — descubram isso na bancada, molhando o sensor e vendo
+// para que lado o numero anda.
 // ─────────────────────────────────────────────────────────────
 export function avaliarVariacao(leituras) {
   if (!leituras || leituras.length < LEITURAS_BASE + 1) return null;
